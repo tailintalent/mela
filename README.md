@@ -12,8 +12,8 @@ Use meta-learning autoencoder to learn to generate a parametrized class of model
 # Requirements
 
 - Python 3.5.2 (Python 2.7 is also fine, except for running Gym environments)
-- PyTorch 0.3(http://pytorch.org/previous-versions/) (Do not use PyTorch 0.4 since it has several APIs not backward compatible)
-- baselines(https://github.com/openai/baselines) for running Gym environments (needs Python 3.5)
+- [PyTorch 0.3](http://pytorch.org/previous-versions/) (Do not use PyTorch 0.4 since it has several APIs not backward compatible)
+- [baselines](https://github.com/openai/baselines) for running Gym environments (needs Python 3.5)
 - scikit-learn
 - matplotlib
 
