@@ -21,5 +21,3 @@ After installing the above requirements, install the custom Gym environment by f
 
 	$ pip3 install -e .
 
-to install the developer version of Gym.
-
