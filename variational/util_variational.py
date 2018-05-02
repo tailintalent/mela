@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.autograd import Variable
 from sklearn.model_selection import train_test_split
+import time
 
 def process_object_info(percept_list, chosen_dim = None):
     """Transform the percepted list of dict structure into a plane dictionary structure."""
@@ -147,6 +148,9 @@ def get_env_data(
         if "physics" in kwargs:
             print("corrected physics: {0}".format(kwargs["physics"]))
             env_settings["physics"] = kwargs["physics"]
+        if "boundaries" in kwargs:
+            print("corrected boundaries: {0}".format(kwargs["boundaries"]))
+            env_settings["boundaries"] = kwargs["boundaries"]
         if "ball_vmax" in kwargs:
             print("corrected ball_vmax: {0}".format(kwargs["ball_vmax"]))
             env_settings["ball_vmax"] = kwargs["ball_vmax"]
@@ -194,6 +198,7 @@ def get_env_data(
                 bouncing_list.append({})
                 k += 1
         obs_var = np.array(obs_var)
+        print(obs_var)
         obs_var = Variable(torch.FloatTensor(obs_var), requires_grad = False)
 
         if isplot > 0:
