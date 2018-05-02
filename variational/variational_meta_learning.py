@@ -596,12 +596,12 @@ def get_nets(
     return statistics_Net, generative_Net, generative_Net_logstd
 
 
-def get_tasks(task_id_list, num_train, num_test, task_settings = {}):
+def get_tasks(task_id_list, num_train, num_test, task_settings = {}, **kwargs):
     num_tasks = num_train + num_test
     tasks = {}
     if "2Dbouncing" in task_id_list:
         num_examples = task_settings["num_examples"] if "num_examples" in task_settings else 2000
-        tasks_candidate = get_bouncing_data(num_examples)
+        tasks_candidate = get_bouncing_data(num_examples, **kwargs)
         for i, key in enumerate(tasks_candidate.keys()):
             tasks[key] = tasks_candidate[key]
     else:
@@ -1055,13 +1055,14 @@ def get_master_function(
     return ((X_train, y_train), (X_test, y_test)), {"z": z}
 
 
-def get_bouncing_data(num_examples):
+def get_bouncing_data(num_examples, **kwargs):
     num_examples = num_examples * 10
     from AI_scientist.variational.util_variational import get_env_data
     tasks = {}
     i = 0
-    for env_name in ["env6.0", "env6.1", "env6.2", "env6.3", "env6.4"]:
-        dataset = get_env_data("env6.2", num_examples = num_examples, isplot = False, is_cuda = False, episode_length = 200)
+    for env_name in ["envBounce2"]:
+        render = kwargs["render"] if "render" in kwargs else False
+        dataset = get_env_data("envBounce2", num_examples = num_examples, isplot = False, is_cuda = False, episode_length = 200, render = render)
         ((X_train, y_train), (X_test, y_test), (reflected_train, reflected_test)), info = dataset
         bouncing_modes = np.unique(reflected_train.data.numpy())
         for bounce_mode in bouncing_modes:

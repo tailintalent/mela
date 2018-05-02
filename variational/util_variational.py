@@ -198,7 +198,6 @@ def get_env_data(
                 bouncing_list.append({})
                 k += 1
         obs_var = np.array(obs_var)
-        print(obs_var)
         obs_var = Variable(torch.FloatTensor(obs_var), requires_grad = False)
 
         if isplot > 0:
