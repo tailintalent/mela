@@ -23,6 +23,7 @@ sys.path.append(os.path.join(os.path.dirname("__file__"), '..', '..'))
 from AI_scientist.prepare_dataset import Dataset_Gen
 from AI_scientist.util import plot_matrices
 from AI_scientist.settings.a2c_env_settings import ENV_SETTINGS_CHOICE
+from AI_scientist.settings.global_param import COLOR_LIST
 from AI_scientist.pytorch.net import Net
 from AI_scientist.pytorch.util_pytorch import get_activation, get_optimizer, get_criterion, Loss_Fun
 
@@ -632,9 +633,9 @@ def get_tasks(task_id_list, num_train, num_test, task_settings = {}, is_cuda = F
         elif task_id[:6] == "master":
             task_mode = task_id.split("_")[1]
             task = get_master_function(task_settings["z_settings"], mode = task_mode, settings = task_settings, num_examples = num_examples, is_cuda = is_cuda,)
-        elif task_id == "2Dbouncing-states":
+        elif task_id == "bounce-states":
             task = get_bouncing_states(num_examples = num_examples, is_cuda = is_cuda, **kwargs)
-        elif task_id == "2Dbouncing-images":
+        elif task_id == "bounce-images":
             task = get_bouncing_images(num_examples = num_examples, is_cuda = is_cuda, **kwargs)
         else:
             task = Dataset_Gen(task_id, settings = {"domain": (-3,3),
@@ -772,7 +773,7 @@ def plot_individual_tasks(tasks, statistics_Net, generative_Net, generative_Net_
     i = 0
     if xlim is not None:
         X_linspace = Variable(torch.linspace(xlim[0], xlim[1], 200).unsqueeze(1))
-        if task[list(task.keys())[0]][0][0][0].is_cuda:
+        if tasks[list(tasks.keys())[0]][0][0][0].is_cuda:
             is_cuda = True
             X_linspace = X_linspace.cuda()
     for task_id, task in tasks.items():
@@ -786,7 +787,11 @@ def plot_individual_tasks(tasks, statistics_Net, generative_Net, generative_Net_
                 statistics = statistics_Net(torch.cat([X_test, y_test], 1))
             else:
                 statistics, statistics_logvar = statistics_Net(torch.cat([X_test, y_test], 1))
-        statistics_list.append(statistics.data.numpy().squeeze())
+        if X_test.is_cuda:
+            statistics_cpu = statistics.cpu()
+        else:
+            statistics_cpu = statistics
+        statistics_list.append(statistics_cpu.data.numpy().squeeze())
         if task_id not in chosen_id:
             continue
         
@@ -796,12 +801,22 @@ def plot_individual_tasks(tasks, statistics_Net, generative_Net, generative_Net_
                 if is_regulated_net:
                     statistics = get_regulated_statistics(generative_Net, statistics)
                 y_pred = generative_Net(X_linspace, statistics)
-                ax.plot(X_linspace.data.numpy()[:, chosen_dim], y_pred.data.numpy().squeeze(), "-r", markersize = 3, label = "pred")
+                if X_test.is_cuda:
+                    X_linspace_cpu = X_linspace.cpu()
+                    y_pred_cpu = y_pred.cpu()
+                else:
+                    X_linspace_cpu = X_linspace
+                    y_pred_cpu = y_pred
+                ax.plot(X_linspace_cpu.data.numpy()[:, chosen_dim], y_pred_cpu.data.numpy().squeeze(), "-r", markersize = 3, label = "pred")
                 if generative_Net_logstd is not None:
                     if is_regulated_net:
                         statistics_logvar = get_regulated_statistics(generative_Net_logstd, statistics_logvar)
                     y_pred_std = torch.exp(generative_Net_logstd(X_linspace, statistics_logvar))
-                    ax.fill_between(X_linspace.data.numpy()[:, chosen_dim], (y_pred - y_pred_std).data.numpy().squeeze(), (y_pred + y_pred_std).data.numpy().squeeze(), color = "r", alpha = 0.3)
+                    if X_test.is_cuda:
+                        y_pred_std_cpu = y_pred_std.cpu()
+                    else:
+                        y_pred_std_cpu = y_pred_std
+                    ax.fill_between(X_linspace_cpu.data.numpy()[:, chosen_dim], (y_pred_cpu - y_pred_std_cpu).data.numpy().squeeze(), (y_pred_cpu + y_pred_std_cpu).data.numpy().squeeze(), color = "r", alpha = 0.3)
 #             else:
 #                 if is_regulated_net:
 #                     statistics = get_regulated_statistics(generative_Net, statistics)
@@ -861,13 +876,12 @@ def plot_statistics_vs_z(z_list, statistics_list, mode = "corrcoef", title = Non
         z_list = np.expand_dims(z_list, 1)
     z_size = z_list.shape[1]
     num_rows = int(np.ceil(z_size / num_columns))
-    color_list = ["b", "r", "g", "y", "c", "m", "k"]
     fig = plt.figure(figsize = (25, num_rows * 3.2))
     
     for i in range(z_size):
         ax = fig.add_subplot(num_rows, num_columns, i + 1)
         for j in range(statistics_list.shape[1]):
-            ax.plot(z_list[:,i], statistics_list[:,j], ".{0}".format(color_list[j]), alpha = 0.6, markersize = 2)
+            ax.plot(z_list[:,i], statistics_list[:,j], color = COLOR_LIST[j], marker = ".", linestyle = 'None', alpha = 0.6, markersize = 2)
             ax.set_title("statistics vs. z_{0}".format(i))
     plt.show()
     
@@ -1135,11 +1149,11 @@ def get_bouncing_states(num_examples, is_cuda = False, **kwargs):
     vertex_top_left = (np.random.rand() * screen_size / 4 + ball_radius, screen_size - np.random.rand() * screen_size / 4 - ball_radius)
     boundaries = [vertex_bottom_left, vertex_bottom_right, vertex_top_right, vertex_top_left]
     ((X_train, y_train), (X_test, y_test), (reflected_train, reflected_test)), info = get_env_data(
-            env_name, num_examples = num_examples, isplot = False, is_cuda = False, episode_length = 200, boundaries = boundaries, render = render, is_flatten = False)
+            env_name, num_examples = num_examples, isplot = False, is_cuda = False, episode_length = 200, boundaries = boundaries, render = render, is_flatten = True)
     if is_cuda:
         X_train = X_train.cuda()
         y_train = y_train.cuda()
         X_test = X_test.cuda()
         y_test = y_test.cuda()
-    return ((X_train, y_train), (X_test, y_test)), {"z": boundaries}
+    return ((X_train, y_train), (X_test, y_test)), {"z": np.array(boundaries).reshape(-1)}
 
