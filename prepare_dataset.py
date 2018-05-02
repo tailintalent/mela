@@ -107,33 +107,7 @@ def Dataset_Gen(dataset_key, settings = {}):
 		info_dict["shape"] = X.shape[1:]
 		y = X
 		X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.2)
-		else:
-			m_idx = int(dataset_key[7:])
-			if m_idx in range(4):
-				input_size = 2
-				activation_available = ["linear", "relu"]
-				epochs = 200
-			elif m_idx in range(4, 7):
-				input_size = 3
-				activation_available = ["linear", "relu"]
-				epochs = 400 if m_idx != 4 else 300
-			elif m_idx in range(7, 10):
-				input_size = 2
-				activation_available = ["linear", "sin"]
-				epochs = 400
-			elif m_idx in range(10, 15):
-				input_size = 2
-				activation_available = ["linear", "relu"]
-				epochs = 400
-			elif m_idx in range(15, 20):
-				input_size = 2
-				activation_available = ["linear", "relu", "tanh"]
-				epochs = 400
-		try:
-			(X_train, y_train), (X_test, y_test) = get_data_from_csv('MYSTERY_DATA/{0}.csv'.format(dataset_key), X_columns = [0, input_size - 1], y_columns = input_size)
-		except:
-			(X_train, y_train), (X_test, y_test) = get_data_from_csv('../MYSTERY_DATA/{0}.csv'.format(dataset_key), X_columns = [0, input_size - 1], y_columns = input_size)
-		
+	
 
 	elif dataset_key == "sawtooth":
 		input_size = 1
