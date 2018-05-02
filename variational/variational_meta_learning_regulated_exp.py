@@ -33,6 +33,8 @@ from AI_scientist.variational.variational_meta_learning import get_latent_model_
 seed = 1
 np.random.seed(seed)
 torch.manual_seed(seed)
+is_cuda = torch.cuda.is_available()
+# is_cuda = False
 
 
 # ### Training:
@@ -47,12 +49,12 @@ task_id_list = [
 # "master_sawtooth",
 # "master_sin",
 # "master_Gaussian",
-# "master_tanh",
+"master_tanh",
 # "master_softplus",
-"2Dbouncing",
+# "2Dbouncing-states",
 ]
 exp_id = "test2"
-input_size = 6
+input_size = 1
 statistics_output_neurons = 6
 is_VAE = False
 is_uncertainty_net = False
@@ -61,8 +63,8 @@ VAE_beta = 0.2
 
 output_size = 1
 lr = 5e-5
-num_train_tasks = 10
-num_test_tasks = 5
+num_train_tasks = 100
+num_test_tasks = 100
 batch_size_task = min(100, num_train_tasks)
 num_backwards = 1
 num_iter = 20000
@@ -143,6 +145,7 @@ statistics_Net, generative_Net, generative_Net_logstd = get_nets(input_size = in
                                           isParallel = isParallel,
                                           is_VAE = is_VAE,
                                           is_uncertainty_net = is_uncertainty_net,
+                                          is_cuda = is_cuda,
                                          )
 if is_regulated_net:
     struct_param_regulated_Net = [
@@ -171,7 +174,7 @@ else:
     else:
         criterion = loss_fun_core
 early_stopping = Early_Stopping(patience = patience)
-tasks_train, tasks_test = get_tasks(task_id_list, num_train_tasks, num_test_tasks, task_settings = task_settings)
+tasks_train, tasks_test = get_tasks(task_id_list, num_train_tasks, num_test_tasks, task_settings = task_settings, is_cuda = is_cuda)
 all_keys = list(tasks_train.keys()) + list(tasks_test.keys())
 
 data_record = {"loss": {key: [] for key in all_keys}, "loss_sampled": {key: [] for key in all_keys}, "mse": {key: [] for key in all_keys},
@@ -214,7 +217,7 @@ for i in range(num_iter + 1):
                             statistics = get_regulated_statistics(generative_Net, statistics)
                         y_pred = generative_Net(X_train, statistics)
                         loss = criterion(y_pred, y_train)
-                reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net)
+                reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, is_cuda = is_cuda)
                 loss = loss + reg
                 loss.backward(retain_graph = True)
                 optimizer.step()
@@ -248,7 +251,7 @@ for i in range(num_iter + 1):
                     statistics = statistics_Net(torch.cat([X_train, y_train], 1))
                     y_pred = generative_Net(X_train, statistics)
                     loss = criterion(y_pred, y_train)
-            reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net)
+            reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, is_cuda = is_cuda)
             loss_total = loss_total + loss + reg
         loss_total.backward()
         optimizer.step()
@@ -269,7 +272,7 @@ for i in range(num_iter + 1):
         for task_key, task in tasks_train.items():
             (_, (X_test, y_test)), _ = task
             loss_test, loss_test_sampled, mse, KLD_test = evaluate(task, statistics_Net, generative_Net, generative_Net_logstd = generative_Net_logstd, criterion = criterion, is_VAE = is_VAE, is_regulated_net = is_regulated_net)
-            reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net).data.numpy()[0]
+            reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, is_cuda = is_cuda).data[0]
             data_record["loss"][task_key].append(loss_test)
             data_record["loss_sampled"][task_key].append(loss_test_sampled)
             data_record["mse"][task_key].append(mse)
@@ -279,7 +282,7 @@ for i in range(num_iter + 1):
         for task_key, task in tasks_test.items():
             (_, (X_test, y_test)), _ = task
             loss_test, loss_test_sampled, mse, KLD_test = evaluate(task, statistics_Net, generative_Net, generative_Net_logstd = generative_Net_logstd, criterion = criterion, is_VAE = is_VAE, is_regulated_net = is_regulated_net)
-            reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net).data.numpy()[0]
+            reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, is_cuda = is_cuda).data[0]
             data_record["loss"][task_key].append(loss_test)
             data_record["loss_sampled"][task_key].append(loss_test_sampled)
             data_record["mse"][task_key].append(mse)
@@ -314,7 +317,7 @@ for i in range(num_iter + 1):
         print('\n{0}\ttrain\tloss_mean: {1:.5f}\tloss_median: {2:.5f}\tmse_mean: {3:.6f}\tmse_median: {4:.6f}\treg: {5:.6f}'.format(i, data_record["loss_mean_train"][-1], data_record["loss_median_train"][-1], data_record["mse_mean_train"][-1], data_record["mse_median_train"][-1], data_record["reg_mean_train"][-1]))
         print('{0}\ttest\tloss_mean: {1:.5f}\tloss_median: {2:.5f}\tmse_mean: {3:.6f}\tmse_median: {4:.6f}\treg: {5:.6f}'.format(i, data_record["loss_mean_test"][-1], data_record["loss_median_test"][-1], data_record["mse_mean_test"][-1], data_record["mse_median_test"][-1], data_record["reg_mean_test"][-1]))
         if is_VAE and "KLD_total" in locals():
-            print("KLD_total: {0:.5f}".format(KLD_total.data.numpy()[0]))
+            print("KLD_total: {0:.5f}".format(KLD_total.data[0]))
         if isplot:
             plot_data_record(data_record, is_VAE = is_VAE)
 
@@ -357,212 +360,4 @@ if isplot:
     plt.show()
 print("completed")
 sys.stdout.flush()
-
-
-# ### Analysis:
-
-# In[ ]:
-
-
-exp_id = "exp1.2" # Standard
-dirname = "../data/variational/trained_models/{0}/".format(exp_id)
-filename = "Net_['master_tanh']_input_1_(100,100)_statistics-neurons_4_pre_100_pooling_max_context_0_batch_100_backward_1_VAE_True_0.2_lr_0.0001_reg_1e-06_actgen_elu_actmodel_leakyRelu_struct_60Si-60Si-60Si_exp1.2_"
-statistics_Net, generative_Net, data_record = load_trained_models(dirname + filename)
-
-
-# In[ ]:
-
-
-task_id_list = [
-# "latent_model_linear",
-# "polynomial_3",
-# "Legendre_3",
-# "master_sawtooth",
-# "master_sin",
-# "master_Gaussian",
-"master_tanh",
-# "master_softplus",
-]
-is_VAE = True
-num_test_tasks = 1000
-task_settings = {
-    "zdim": 1,
-    "z_settings": ["Gaussian", (0, 1)],
-    "num_layers": 1,
-    "xlim": (-4, 4),
-    "activation": "softplus",
-    "input_size": 1,
-    "num_examples": 500,
-}
-plot_data_record(data_record, is_VAE = is_VAE)
-tasks_train, tasks_test = get_tasks(task_id_list, 10, num_test_tasks, task_settings = task_settings)
-statistics_list_test, z_list_test = plot_task_ensembles(tasks_test, statistics_Net, generative_Net, is_VAE = is_VAE, title = "y_pred_test vs. y_test")
-print("test statistics vs. z:")
-plot_statistics_vs_z(z_list_test, statistics_list_test)
-_ = plot_individual_tasks(tasks_test, statistics_Net, generative_Net, is_VAE = is_VAE, xlim = task_settings["xlim"])
-
-
-# In[ ]:
-
-
-# quick learn analysis:
-(_, (X_test, y_test)), _ = tasks_test['master_tanh_1']
-
-num_steps_statistics = 50
-lr_statistics = 1e-2
-optimizer_statistics = "LBFGS"
-
-# num_steps = 50
-# lr = 1e-3
-# optimizer = "adam"
-
-num_steps = 50
-lr = 1e-2
-optimizer = "LBFGS"
-
-master_model.get_statistics(X_test, y_test)
-y_pred = master_model(X_test)
-loss_list_0 = master_model.statistics_quick_learn(X_test, y_test, num_steps = num_steps_statistics, lr = lr_statistics, optimizer = optimizer_statistics)
-y_pred_new = master_model(X_test)
-plt.plot(X_test.data.numpy(), y_test.data.numpy(), ".k", label = "target", markersize = 3, alpha = 0.6)
-plt.plot(X_test.data.numpy(), y_pred.data.numpy(), ".b", label = "initial", markersize = 3, alpha = 0.6)
-plt.plot(X_test.data.numpy(), y_pred_new.data.numpy(), ".r", label = "optimized", markersize = 3, alpha = 0.6)
-plt.legend()
-plt.title("Only optimizing statistics")
-plt.show()
-
-master_model = Master_Model(statistics_Net, generative_Net)
-master_model.get_statistics(X_test, y_test)
-master_model.use_clone_net(clone_parameters = True)
-y_pred = master_model(X_test)
-loss_list_1 = master_model.clone_net_quick_learn(X_test, y_test, num_steps = num_steps, lr = lr, optimizer = optimizer)
-y_pred_new = master_model(X_test)
-plt.plot(X_test.data.numpy(), y_test.data.numpy(), ".k", label = "target", markersize = 3, alpha = 0.6)
-plt.plot(X_test.data.numpy(), y_pred.data.numpy(), ".b", label = "initial", markersize = 3, alpha = 0.6)
-plt.plot(X_test.data.numpy(), y_pred_new.data.numpy(), ".r", label = "optimized", markersize = 3, alpha = 0.6)
-plt.legend()
-plt.title("Optimizing cloned net")
-plt.show()
-
-master_model = Master_Model(statistics_Net, generative_Net)
-master_model.get_statistics(X_test, y_test)
-master_model.use_clone_net(clone_parameters = False)
-W_core, _ = master_model.cloned_net.get_weights_bias(W_source = "core")
-y_pred = master_model(X_test)
-loss_list_2 = master_model.clone_net_quick_learn(X_test, y_test, num_steps = num_steps, lr = lr, optimizer = optimizer)
-y_pred_new = master_model(X_test)
-plt.plot(X_test.data.numpy(), y_test.data.numpy(), ".k", label = "target", markersize = 3, alpha = 0.6)
-plt.plot(X_test.data.numpy(), y_pred.data.numpy(), ".b", label = "initial", markersize = 3, alpha = 0.6)
-plt.plot(X_test.data.numpy(), y_pred_new.data.numpy(), ".r", label = "optimized", markersize = 3, alpha = 0.6)
-plt.legend()
-plt.title("Optimizing from_scratch")
-plt.show()
-
-plt.plot(range(len(loss_list_0)), loss_list_0, label = "loss_statistics")
-plt.plot(range(len(loss_list_1)), loss_list_1, label = "loss_clone")
-plt.plot(range(len(loss_list_2)), loss_list_2, label = "loss_scratch")
-plt.legend()
-plt.show()
-plt.semilogy(range(len(loss_list_0)), loss_list_0, label = "loss_statistics")
-plt.semilogy(range(len(loss_list_1)), loss_list_1, label = "loss_clone")
-plt.semilogy(range(len(loss_list_2)), loss_list_2, label = "loss_scratch")
-
-plt.legend()
-plt.show()
-
-
-# ### Regression of statistics vs. z:
-
-# In[ ]:
-
-
-from sklearn import linear_model
-reg = linear_model.LinearRegression()
-# reg = linear_model.Ridge(alpha = .5)
-# reg = linear_model.Lasso(alpha = 0.1)
-# reg = linear_model.BayesianRidge()
-# reg = linear_model.HuberRegressor()
-coeff_list = []
-for i in range(statistics_list_test.shape[1]):
-    reg.fit(z_list_test, statistics_list_test[:,i])
-    coeff_list.append(reg.coef_)
-coeff_list = np.array(coeff_list)
-plot_matrices([abs(coeff_list)])
-print(coeff_list)
-
-
-# ### Fitting neural network to statistics vs. z:
-
-# In[ ]:
-
-
-struct_param = [
-        [120, "Simple_Layer", {"activation": "leakyRelu"}],
-        [120, "Simple_Layer", {"activation": "leakyRelu"}],
-        [120, "Simple_Layer", {"activation": "leakyRelu"}],
-        [4, "Simple_Layer", {"activation": "linear"}],
-    ]
-settings = {"activation": "linear"}
-fit_net = Net(input_size = 4, struct_param = struct_param, settings = settings)
-model = Model(model = fit_net)
-lr = 5e-4
-model.compile(loss_type = "huber",
-              optimizer = "adam",
-              lr = {"attention": lr, "modules": lr},
-              reg_settings = {"L1": {"scale": 1e-6 * np.linspace(0, 1, 10000)}},
-             )
-model.fit(statistics_list_test, z_list_test, 
-          validation_data = [statistics_list_test, z_list_test],
-          epochs = 10000,
-          batch_size = 100,
-          inspect_interval = 100,
-          record_mode = 2,
-          verbose = 1,
-         )
-
-
-# In[ ]:
-
-
-tasks_train2, tasks_test2 = get_tasks(task_id_list, 10, num_test_tasks, task_settings = task_settings)
-(_, (X_test, y_test)), z = tasks_test2['Legendre_3_1002']
-mu, logvar = statistics_Net(torch.cat([X_test, y_test],1))
-print("z:      ", z["z"])
-print("z_pred: ", fit_net(mu).data.numpy()[0])
-
-
-# ### Analysis of statistics_list_test:
-
-# In[ ]:
-
-
-for i in range(4):
-    plt.hist(z_list_test[:,i], bins = 20)
-    plt.show()
-
-
-# In[ ]:
-
-
-for i in range(4):
-    plt.hist(statistics_list_test[:,i], bins = 20)
-    plt.show()
-
-
-# In[ ]:
-
-
-import numpy as np
-from sklearn.decomposition import PCA
-pca = PCA(n_components=4)
-pca.fit(statistics_list_test)
-print("explained variance:", pca.explained_variance_ratio_)
-print("singular values:", pca.singular_values_)
-print("components:\n", pca.components_)
-
-
-# In[ ]:
-
-
-manifold_embedding(statistics_list_test)
 

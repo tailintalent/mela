@@ -32,12 +32,13 @@ from AI_scientist.pytorch.util_pytorch import get_activation, get_optimizer, get
 
 # Definitions:
 class Master_Model(nn.Module):
-    def __init__(self, statistics_Net = None, generative_Net = None, generative_Net_logstd = None):
+    def __init__(self, statistics_Net = None, generative_Net = None, generative_Net_logstd = None, is_cuda = False):
         super(Master_Model, self).__init__()
         self.statistics_Net = statistics_Net
         self.generative_Net = generative_Net
         self.generative_Net_logstd = generative_Net_logstd
         self.use_net = "generative"
+        self.is_cuda = is_cuda
 
     @property
     def model_dict(self):
@@ -86,6 +87,8 @@ class Master_Model(nn.Module):
         if not isinstance(target, list):
             target = [target]
         reg = Variable(torch.FloatTensor(np.array([0])), requires_grad = False)
+        if self.is_cuda:
+            reg = reg.cuda()
         for target_ele in target:
             if target_ele == "statistics_Net":
                 assert self.use_net == "generative"
@@ -178,6 +181,8 @@ def load_model_dict(model_dict, is_cuda = False):
                 net.latent_param.data.copy_(torch.FloatTensor(model_dict["latent_param"]))
             else:
                 net.latent_param = Variable(torch.FloatTensor(model_dict["latent_param"]), requires_grad = False)
+                if is_cuda:
+                    net.latent_param = net.latent_param.cuda()
         if "context" in model_dict:
             net.context.data.copy_(torch.FloatTensor(model_dict["context"]))
     elif model_dict["type"] in ["Master_Model", "Full_Net"]: # The "Full_Net" name is for legacy
@@ -286,8 +291,8 @@ class Generative_Net(nn.Module):
         self.is_cuda = is_cuda
 
         for i, W_struct_param in enumerate(self.W_struct_param_list):
-            setattr(self, "W_gen_{0}".format(i), Net(input_size = self.input_size + num_context_neurons, struct_param = W_struct_param, settings = self.settings_generative))
-            setattr(self, "b_gen_{0}".format(i), Net(input_size = self.input_size + num_context_neurons, struct_param = self.b_struct_param_list[i], settings = self.settings_generative))
+            setattr(self, "W_gen_{0}".format(i), Net(input_size = self.input_size + num_context_neurons, struct_param = W_struct_param, settings = self.settings_generative, is_cuda = is_cuda))
+            setattr(self, "b_gen_{0}".format(i), Net(input_size = self.input_size + num_context_neurons, struct_param = self.b_struct_param_list[i], settings = self.settings_generative, is_cuda = is_cuda))
         # Setting up latent param and context param:
         self.latent_param = nn.Parameter(torch.randn(1, self.input_size)) if learnable_latent_param else None
         if self.num_context_neurons > 0:
@@ -438,6 +443,8 @@ class Generative_Net(nn.Module):
 
     def get_regularization(self, source = ["weight", "bias"], mode = "L1"):
         reg = Variable(torch.FloatTensor(np.array([0])), requires_grad = False)
+        if self.is_cuda:
+            reg = reg.cuda()
         for reg_type in source:
             if reg_type == "weight":
                 for i in range(len(self.W_struct_param_list)):
@@ -490,6 +497,8 @@ def get_relevance(X, y, statistics_Net):
 def sample_Gaussian(mu, logvar):
     std = logvar.mul(0.5).exp_()
     eps = Variable(torch.randn(std.size()), requires_grad = False)
+    if mu.is_cuda:
+        eps = eps.cuda()
     return mu + std * eps
 
 
@@ -506,8 +515,13 @@ def clone_net(generative_Net, layer_type = "Simple_Layer", clone_parameters = Tr
         layer_struct_param = [num_neurons, layer_type, {}]
         struct_param.append(layer_struct_param)
         if clone_parameters:
-            W_init_list.append((getattr(generative_Net, "W_gen_{0}".format(i))(statistics)).squeeze(0).data.numpy())
-            b_init_list.append(getattr(generative_Net, "b_gen_{0}".format(i))(statistics).data.numpy()[0])
+            W_init = (getattr(generative_Net, "W_gen_{0}".format(i))(statistics)).squeeze(0)
+            b_init = getattr(generative_Net, "b_gen_{0}".format(i))(statistics)
+            if generative_Net.is_cuda:
+                W_init = W_init.cpu()
+                b_init = b_init.cpu()
+            W_init_list.append(W_init.data.numpy())
+            b_init_list.append(b_init.data.numpy()[0])
         else:
             W_init_list.append(None)
             b_init_list.append(None)
@@ -532,6 +546,7 @@ def get_nets(
     isParallel = False,
     is_VAE = False,
     is_uncertainty_net = False,
+    is_cuda = False,
     ):
     layer_type = "Simple_Layer"
     struct_param_pre = [
@@ -555,6 +570,7 @@ def get_nets(
                                     struct_param_post_logvar = struct_param_post_logvar,
                                     pooling = statistics_pooling,
                                     settings = {"activation": activation_statistics},
+                                    is_cuda = is_cuda,
                                    )
 
     # For Generative_Net:
@@ -576,6 +592,7 @@ def get_nets(
                                     settings_generative = {"activation": activation_generative},
                                     settings_model = {"activation": activation_model},
                                     learnable_latent_param = learnable_latent_param,
+                                    is_cuda = is_cuda,
                                    )
     if is_uncertainty_net:
         generative_Net_logstd = Generative_Net(input_size = statistics_output_neurons,
@@ -585,6 +602,7 @@ def get_nets(
                                                 settings_generative = {"activation": activation_generative},
                                                 settings_model = {"activation": activation_model},
                                                 learnable_latent_param = learnable_latent_param,
+                                                is_cuda = is_cuda,
                                                )
     else:
         generative_Net_logstd = None
@@ -597,27 +615,27 @@ def get_nets(
     return statistics_Net, generative_Net, generative_Net_logstd
 
 
-def get_tasks(task_id_list, num_train, num_test, task_settings = {}, **kwargs):
+def get_tasks(task_id_list, num_train, num_test, task_settings = {}, is_cuda = False, **kwargs):
     num_tasks = num_train + num_test
     tasks = {}
     for j in range(num_tasks):
         task_id = np.random.choice(task_id_list)
         num_examples = task_settings["num_examples"] if "num_examples" in task_settings else 2000
         if task_id[:12] == "latent_model":
-            task = get_latent_model_data(task_settings["z_settings"], settings = task_settings, num_examples = num_examples)
+            task = get_latent_model_data(task_settings["z_settings"], settings = task_settings, num_examples = num_examples, is_cuda = is_cuda,)
         elif task_id[:10] == "polynomial":
             order = int(task_id.split("_")[1])
-            task = get_polynomial_class(task_settings["z_settings"], order = order, settings = task_settings, num_examples = num_examples)
+            task = get_polynomial_class(task_settings["z_settings"], order = order, settings = task_settings, num_examples = num_examples, is_cuda = is_cuda,)
         elif task_id[:8] == "Legendre":
             order = int(task_id.split("_")[1])
-            task = get_Legendre_class(task_settings["z_settings"], order = order, settings = task_settings, num_examples = num_examples)
+            task = get_Legendre_class(task_settings["z_settings"], order = order, settings = task_settings, num_examples = num_examples, is_cuda = is_cuda,)
         elif task_id[:6] == "master":
             task_mode = task_id.split("_")[1]
-            task = get_master_function(task_settings["z_settings"], mode = task_mode, settings = task_settings, num_examples = num_examples)
+            task = get_master_function(task_settings["z_settings"], mode = task_mode, settings = task_settings, num_examples = num_examples, is_cuda = is_cuda,)
         elif task_id == "2Dbouncing-states":
-            task = get_bouncing_states(num_examples = num_examples)
+            task = get_bouncing_states(num_examples = num_examples, is_cuda = is_cuda, **kwargs)
         elif task_id == "2Dbouncing-images":
-            task = get_bouncing_images(num_examples = num_examples)
+            task = get_bouncing_images(num_examples = num_examples, is_cuda = is_cuda, **kwargs)
         else:
             task = Dataset_Gen(task_id, settings = {"domain": (-3,3),
                                                     "num_train": 200,
@@ -671,8 +689,10 @@ def evaluate(task, statistics_Net, generative_Net, generative_Net_logstd = None,
         return loss.data[0], loss.data[0], mse.data[0], 0
 
 
-def get_reg(reg_dict, statistics_Net = None, generative_Net = None):
+def get_reg(reg_dict, statistics_Net = None, generative_Net = None, is_cuda = False):
     reg = Variable(torch.FloatTensor([0]), requires_grad = False)
+    if is_cuda:
+        reg = reg.cuda()
     for net_name, reg_info in reg_dict.items():
         if net_name == "statistics_Net":
             reg_net = statistics_Net
@@ -706,7 +726,7 @@ def plot_task_ensembles(tasks, statistics_Net, generative_Net, is_VAE = False, i
     statistics_list = []
     z_list = []
     for task_key, task in tasks.items():
-        (_, (X_test, y_test)), info = task
+        (_, (X_test, y_test)), info = task 
         if is_VAE:
             statistics_mu, statistics_logvar = statistics_Net(torch.cat([X_test, y_test], 1))
             statistics = sample_Gaussian(statistics_mu, statistics_logvar)
@@ -714,12 +734,19 @@ def plot_task_ensembles(tasks, statistics_Net, generative_Net, is_VAE = False, i
             statistics = statistics_Net(torch.cat([X_test, y_test], 1))
             if isinstance(statistics, tuple):
                 statistics = statistics[0]
-        statistics_list.append(statistics.data.numpy()[0])
+        if X_test.is_cuda:
+            statistics_cpu = statistics.cpu()
+        else:
+            statistics_cpu = statistics
+        statistics_list.append(statistics_cpu.data.numpy()[0])
         if is_regulated_net:
             statistics = get_regulated_statistics(generative_Net, statistics)
         y_pred = generative_Net(X_test, statistics)
         z_list.append(info["z"])
         if isplot:
+            if X_test.is_cuda:
+                y_pred = y_pred.cpu()
+                y_test = y_test.cpu()
             plt.plot(y_test.data.numpy()[:,0], y_pred.data.numpy()[:,0], ".", markersize = 1, alpha = 0.5)
     if title is not None and isplot:
         plt.title(title)
@@ -745,6 +772,9 @@ def plot_individual_tasks(tasks, statistics_Net, generative_Net, generative_Net_
     i = 0
     if xlim is not None:
         X_linspace = Variable(torch.linspace(xlim[0], xlim[1], 200).unsqueeze(1))
+        if task[list(task.keys())[0]][0][0][0].is_cuda:
+            is_cuda = True
+            X_linspace = X_linspace.cuda()
     for task_id, task in tasks.items():
         ((X_train, y_train), (X_test, y_test)), info = task
         input_size = X_test.size(1)
@@ -786,8 +816,22 @@ def plot_individual_tasks(tasks, statistics_Net, generative_Net, generative_Net_
             y_pred_mean = np.mean(y_pred_list, 1)
             y_pred_std = np.std(y_pred_list, 1)
             print(y_pred_std.mean())
-            ax.errorbar(X_linspace.data.numpy()[:, chosen_dim], y_pred_mean, yerr = y_pred_std, fmt="-r", markersize = 3, label = "pred")
-        ax.plot(X_test.data.numpy()[:, chosen_dim], y_test.data.numpy().squeeze(), ".", markersize = 3, label = "target")
+            if is_cuda:
+                X_linspace_cpu = X_linspace.cpu()
+                y_pred_mean_cpu = y_pred_mean.cpu()
+                y_pred_std_cpu = y_pred_std.cpu()
+            else:
+                X_linspace_cpu = X_linspace
+                y_pred_mean_cpu = y_pred_mean
+                y_pred_std_cpu = y_pred_std
+            ax.errorbar(X_linspace_cpu.data.numpy()[:, chosen_dim], y_pred_mean_cpu, yerr = y_pred_std_cpu, fmt="-r", markersize = 3, label = "pred")
+        if is_cuda:
+            X_test_cpu = X_test.cpu()
+            y_test_cpu = y_test.cpu()
+        else:
+            X_test_cpu = X_test
+            y_test_cpu = y_test  
+        ax.plot(X_test_cpu.data.numpy()[:, chosen_dim], y_test_cpu.data.numpy().squeeze(), ".", markersize = 3, label = "target")
         
         ax.set_xlabel("x_{0}".format(chosen_dim))
         ax.set_ylabel("y")
@@ -903,8 +947,9 @@ def f(x, z, zdim = 1, num_layers = 1, activation = "tanh"):
 def get_latent_model_data(
     z_settings = ["Gaussian", (0, 1)],
     settings = {},
-    isTorch = True,
     num_examples = 1000,
+    isTorch = True,
+    is_cuda = False,
     ):
     if z_settings[0] == "Gaussian":
         mu, std = z_settings[1]
@@ -928,6 +973,11 @@ def get_latent_model_data(
         y_train = Variable(torch.FloatTensor(y_train), requires_grad = False)
         X_test = Variable(torch.FloatTensor(X_test), requires_grad = False)
         y_test = Variable(torch.FloatTensor(y_test), requires_grad = False)
+        if is_cuda:
+            X_train = X_train.cuda()
+            y_train = y_train.cuda()
+            X_test = X_test.cuda()
+            y_test = y_test.cuda()
     return ((X_train, y_train), (X_test, y_test)), {"z": z}
 
 
@@ -936,8 +986,9 @@ def get_polynomial_class(
     z_settings = ["Gaussian", (0, 1)],
     order = 3,
     settings = {},
-    isTorch = True,
     num_examples = 1000,
+    isTorch = True,
+    is_cuda = False,
     ):
     if z_settings[0] == "Gaussian":
         mu, std = z_settings[1]
@@ -960,6 +1011,11 @@ def get_polynomial_class(
         y_train = Variable(torch.FloatTensor(y_train), requires_grad = False)
         X_test = Variable(torch.FloatTensor(X_test), requires_grad = False)
         y_test = Variable(torch.FloatTensor(y_test), requires_grad = False)
+        if is_cuda:
+            X_train = X_train.cuda()
+            y_train = y_train.cuda()
+            X_test = X_test.cuda()
+            y_test = y_test.cuda()
     return ((X_train, y_train), (X_test, y_test)), {"z": z}
 
 
@@ -967,8 +1023,9 @@ def get_Legendre_class(
     z_settings = ["Gaussian", (0, 1)],
     order = 3,
     settings = {},
-    isTorch = True,
     num_examples = 1000,
+    isTorch = True,
+    is_cuda = False,
     ):
     if z_settings[0] == "Gaussian":
         mu, std = z_settings[1]
@@ -989,6 +1046,11 @@ def get_Legendre_class(
         y_train = Variable(torch.FloatTensor(y_train), requires_grad = False)
         X_test = Variable(torch.FloatTensor(X_test), requires_grad = False)
         y_test = Variable(torch.FloatTensor(y_test), requires_grad = False)
+        if is_cuda:
+            X_train = X_train.cuda()
+            y_train = y_train.cuda()
+            X_test = X_test.cuda()
+            y_test = y_test.cuda()
     return ((X_train, y_train), (X_test, y_test)), {"z": z}
 
 
@@ -996,8 +1058,9 @@ def get_master_function(
     z_settings = ["Gaussian", (0, 1)],
     mode = "sawtooth",
     settings = {},
-    isTorch = True,
     num_examples = 1000,
+    isTorch = True,
+    is_cuda = False,
     ):
     def trianglewave(
         x,
@@ -1051,10 +1114,15 @@ def get_master_function(
         y_train = Variable(torch.FloatTensor(y_train), requires_grad = False)
         X_test = Variable(torch.FloatTensor(X_test), requires_grad = False)
         y_test = Variable(torch.FloatTensor(y_test), requires_grad = False)
+        if is_cuda:
+            X_train = X_train.cuda()
+            y_train = y_train.cuda()
+            X_test = X_test.cuda()
+            y_test = y_test.cuda()
     return ((X_train, y_train), (X_test, y_test)), {"z": z}
 
 
-def get_bouncing_states(num_examples, **kwargs):
+def get_bouncing_states(num_examples, is_cuda = False, **kwargs):
     from AI_scientist.variational.util_variational import get_env_data
     from AI_scientist.settings.a2c_env_settings import ENV_SETTINGS_CHOICE
     render = kwargs["render"] if "render" in kwargs else False
@@ -1068,5 +1136,10 @@ def get_bouncing_states(num_examples, **kwargs):
     boundaries = [vertex_bottom_left, vertex_bottom_right, vertex_top_right, vertex_top_left]
     ((X_train, y_train), (X_test, y_test), (reflected_train, reflected_test)), info = get_env_data(
             env_name, num_examples = num_examples, isplot = False, is_cuda = False, episode_length = 200, boundaries = boundaries, render = render, is_flatten = False)
+    if is_cuda:
+        X_train = X_train.cuda()
+        y_train = y_train.cuda()
+        X_test = X_test.cuda()
+        y_test = y_test.cuda()
     return ((X_train, y_train), (X_test, y_test)), {"z": boundaries}
 
