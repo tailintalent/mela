@@ -129,6 +129,7 @@ def get_env_data(
         time_steps = kwargs["time_steps"] if "time_steps" in kwargs else 3
         forward_steps = kwargs["forward_steps"] if "forward_steps" in kwargs else 1
         episode_length = kwargs["episode_length"] if "episode_length" in kwargs else 100
+        is_flatten = kwargs["is_flatten"] if "is_flatten" in kwargs else True
         env_name_split = env_name.split("-")
         if "nobounce" in env_name_split:
             env_name_core = "-".join(env_name_split[:-1])
@@ -156,7 +157,6 @@ def get_env_data(
             env_settings["ball_vmax"] = kwargs["ball_vmax"]
         env = make_env("Breakout_Custom-v0", 1, 0, "", clip_rewards = False, env_settings = env_settings)()
         env.allow_early_resets = True
-        print(env_settings)
 
         obs_var = []
         info_list = []
@@ -212,6 +212,7 @@ def get_env_data(
                      bouncing_list = bouncing_list,
                      time_steps = time_steps,
                      forward_steps = forward_steps,
+                     is_flatten = is_flatten,
                      is_cuda = is_cuda,
                      width = width,
                     )

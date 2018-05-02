@@ -17,15 +17,11 @@ ENV_SETTINGS_CHOICE = {"envBounceBase": {
 					  }
 ENV_SETTINGS_CHOICE["envBounceStates"] = new_dict(ENV_SETTINGS_CHOICE["envBounceBase"],
 										 {
-										  "input_dims": (0,2),
+										  "input_dims": (0, 1),
 										 })
 
-
 ENV_SETTINGS_CHOICE["envBounce1"] = new_dict(ENV_SETTINGS_CHOICE["envBounceStates"],
-										 {"boundaries": [[(6.17022004702574, 9.20324493442158),
-  (37.99885625182655, 5.023325726318397),
-  (36.53244109182887, 37.076614052312024),
-  (3.862602113776709, 34.54439272956952)]],
+										 {"boundaries": [[(4, 1), (15, 1), (29, 14), (20, 28), (1, 23)]],
 										 })
 ENV_SETTINGS_CHOICE["envBounce2"] = new_dict(ENV_SETTINGS_CHOICE["envBounceStates"],
 										 {"boundaries": [[(2, 2), (15, 4), (38, 10), (36, 38), (10, 35)]],

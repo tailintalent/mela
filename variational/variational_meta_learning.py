@@ -22,6 +22,7 @@ import sys, os
 sys.path.append(os.path.join(os.path.dirname("__file__"), '..', '..'))
 from AI_scientist.prepare_dataset import Dataset_Gen
 from AI_scientist.util import plot_matrices
+from AI_scientist.settings.a2c_env_settings import ENV_SETTINGS_CHOICE
 from AI_scientist.pytorch.net import Net
 from AI_scientist.pytorch.util_pytorch import get_activation, get_optimizer, get_criterion, Loss_Fun
 
@@ -599,38 +600,36 @@ def get_nets(
 def get_tasks(task_id_list, num_train, num_test, task_settings = {}, **kwargs):
     num_tasks = num_train + num_test
     tasks = {}
-    if "2Dbouncing" in task_id_list:
+    for j in range(num_tasks):
+        task_id = np.random.choice(task_id_list)
         num_examples = task_settings["num_examples"] if "num_examples" in task_settings else 2000
-        tasks_candidate = get_bouncing_data(num_examples, **kwargs)
-        for i, key in enumerate(tasks_candidate.keys()):
-            tasks[key] = tasks_candidate[key]
-    else:
-        for j in range(num_tasks):
-            task_id = np.random.choice(task_id_list)
-            num_examples = task_settings["num_examples"] if "num_examples" in task_settings else 2000
-            if task_id[:12] == "latent_model":
-                task = get_latent_model_data(task_settings["z_settings"], settings = task_settings, num_examples = num_examples)
-            elif task_id[:10] == "polynomial":
-                order = int(task_id.split("_")[1])
-                task = get_polynomial_class(task_settings["z_settings"], order = order, settings = task_settings, num_examples = num_examples)
-            elif task_id[:8] == "Legendre":
-                order = int(task_id.split("_")[1])
-                task = get_Legendre_class(task_settings["z_settings"], order = order, settings = task_settings, num_examples = num_examples)
-            elif task_id[:6] == "master":
-                task_mode = task_id.split("_")[1]
-                task = get_master_function(task_settings["z_settings"], mode = task_mode, settings = task_settings, num_examples = num_examples)
+        if task_id[:12] == "latent_model":
+            task = get_latent_model_data(task_settings["z_settings"], settings = task_settings, num_examples = num_examples)
+        elif task_id[:10] == "polynomial":
+            order = int(task_id.split("_")[1])
+            task = get_polynomial_class(task_settings["z_settings"], order = order, settings = task_settings, num_examples = num_examples)
+        elif task_id[:8] == "Legendre":
+            order = int(task_id.split("_")[1])
+            task = get_Legendre_class(task_settings["z_settings"], order = order, settings = task_settings, num_examples = num_examples)
+        elif task_id[:6] == "master":
+            task_mode = task_id.split("_")[1]
+            task = get_master_function(task_settings["z_settings"], mode = task_mode, settings = task_settings, num_examples = num_examples)
+        elif task_id == "2Dbouncing-states":
+            task = get_bouncing_states(num_examples = num_examples)
+        elif task_id == "2Dbouncing-images":
+            task = get_bouncing_images(num_examples = num_examples)
+        else:
+            task = Dataset_Gen(task_id, settings = {"domain": (-3,3),
+                                                    "num_train": 200,
+                                                    "num_test": 200,
+                                                    "isTorch": True,
+                                                   })
+        for k in range(num_tasks):
+            if "{0}_{1}".format(task_id, k) in tasks:
+                continue
             else:
-                task = Dataset_Gen(task_id, settings = {"domain": (-3,3),
-                                                        "num_train": 200,
-                                                        "num_test": 200,
-                                                        "isTorch": True,
-                                                       })
-            for k in range(num_tasks):
-                if "{0}_{1}".format(task_id, k) in tasks:
-                    continue
-                else:
-                    task_key = "{0}_{1}".format(task_id, k)
-            tasks[task_key] = task
+                task_key = "{0}_{1}".format(task_id, k)
+        tasks[task_key] = task
     task_id_train = np.random.choice(list(tasks.keys()), num_train, replace = False).tolist()
     tasks_train = {key: value for key, value in tasks.items() if key in task_id_train}
     tasks_test = {key: value for key, value in tasks.items() if key not in task_id_train}
@@ -1055,26 +1054,19 @@ def get_master_function(
     return ((X_train, y_train), (X_test, y_test)), {"z": z}
 
 
-def get_bouncing_data(num_examples, **kwargs):
-    num_examples = num_examples * 10
+def get_bouncing_states(num_examples, **kwargs):
     from AI_scientist.variational.util_variational import get_env_data
-    tasks = {}
-    i = 0
-    for env_name in ["envBounce2"]:
-        render = kwargs["render"] if "render" in kwargs else False
-        dataset = get_env_data("envBounce2", num_examples = num_examples, isplot = False, is_cuda = False, episode_length = 200, render = render)
-        ((X_train, y_train), (X_test, y_test), (reflected_train, reflected_test)), info = dataset
-        bouncing_modes = np.unique(reflected_train.data.numpy())
-        for bounce_mode in bouncing_modes:
-            if bounce_mode == 0:
-                continue
-            task_name = "{0}-{1}".format(env_name, bounce_mode)
-            bounce_mode = float(bounce_mode)
-            X_train_task = X_train[reflected_train.unsqueeze(1) == bounce_mode].view(-1, X_train.size(1))
-            y_train_task = y_train[reflected_train.unsqueeze(1) == bounce_mode].view(-1, y_train.size(1))
-            X_test_task = X_test[reflected_test.unsqueeze(1) == bounce_mode].view(-1, X_test.size(1))
-            y_test_task = y_test[reflected_test.unsqueeze(1) == bounce_mode].view(-1, y_test.size(1))
-            tasks[task_name] = ((X_train_task, y_train_task), (X_test_task, y_test_task)), {"z": i}
-            i += 1
-    return tasks
+    from AI_scientist.settings.a2c_env_settings import ENV_SETTINGS_CHOICE
+    render = kwargs["render"] if "render" in kwargs else False
+    env_name = "envBounceStates"
+    screen_size = ENV_SETTINGS_CHOICE[env_name]["screen_height"]
+    ball_radius = ENV_SETTINGS_CHOICE[env_name]["ball_radius"]
+    vertex_bottom_left = tuple(np.random.rand(2) * screen_size / 4 + ball_radius)
+    vertex_bottom_right = (screen_size - np.random.rand() * screen_size / 4 - ball_radius, np.random.rand() * screen_size / 4 + ball_radius)
+    vertex_top_right = tuple(screen_size - np.random.rand(2) * screen_size / 4 - ball_radius)
+    vertex_top_left = (np.random.rand() * screen_size / 4 + ball_radius, screen_size - np.random.rand() * screen_size / 4 - ball_radius)
+    boundaries = [vertex_bottom_left, vertex_bottom_right, vertex_top_right, vertex_top_left]
+    ((X_train, y_train), (X_test, y_test), (reflected_train, reflected_test)), info = get_env_data(
+            env_name, num_examples = num_examples, isplot = False, is_cuda = False, episode_length = 200, boundaries = boundaries, render = render, is_flatten = False)
+    return ((X_train, y_train), (X_test, y_test)), {"z": boundaries}
 
