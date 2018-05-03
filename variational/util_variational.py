@@ -39,17 +39,35 @@ def process_object_info(percept_list, chosen_dim = None):
     return perception_dict_whole
 
 
-def get_task(trajectory, bouncing_list, time_steps = 3, forward_steps = 1, is_flatten = True, isTorch = True, is_cuda = False, width = None):
+def get_task(
+    trajectory,
+    bouncing_list,
+    obs_array = None,
+    time_steps = 3,
+    forward_steps = 1,
+    is_flatten = True,
+    isTorch = True,
+    is_cuda = False,
+    width = None,
+    test_size = 0.2,
+    ):  
     """Obtain training and testing data from a trajectory"""
     X = []
     y = []
     info = {}
     others = []
     reflect = []
+    if obs_array is not None:
+        obs_array = obs_array.squeeze()
+        obs_X = []
+        obs_y = []
     for i in range(len(trajectory) - time_steps - forward_steps + 1):
         X.append(trajectory[i: i + time_steps])
         y.append(trajectory[i + time_steps + forward_steps - 1: i + time_steps + forward_steps])
         reflect.append(np.any(bouncing_list[i + 1: i + time_steps + forward_steps]).astype(int))
+        if obs_array is not None:
+            obs_X.append(obs_array[i: i + time_steps])
+            obs_y.append(obs_array[i + time_steps + forward_steps - 1: i + time_steps + forward_steps])
         if forward_steps > 1:
             others.append(trajectory[i + time_steps : i + time_steps + forward_steps - 1])
         else:
@@ -57,8 +75,10 @@ def get_task(trajectory, bouncing_list, time_steps = 3, forward_steps = 1, is_fl
     X = np.array(X)
     y = np.array(y)
     reflect = np.array(reflect)
-    # reflect = np.array(bouncing_list)[time_steps:]
     others = np.array(others)
+    if obs_array is not None:
+        obs_X = np.array(obs_X)
+        obs_y = np.array(obs_y)
     if is_flatten:
         X = X.reshape(X.shape[0], -1)
         y = y.reshape(y.shape[0], -1)
@@ -72,8 +92,13 @@ def get_task(trajectory, bouncing_list, time_steps = 3, forward_steps = 1, is_fl
     X = X[valid]
     y = y[valid]
     reflect = reflect[valid]
+    if obs_array is not None:
+        obs_X = obs_X[valid]
+        obs_y = obs_y[valid]
 
-    X_train, X_test, y_train, y_test, reflected_train, reflected_test = train_test_split(X, y, reflect, test_size = 0.2)
+    X_train, X_test, y_train, y_test, reflected_train, reflected_test = train_test_split(X, y, reflect, test_size = test_size)
+    if obs_array is not None:
+        obs_X_train, obs_X_test, obs_y_train, obs_y_test = train_test_split(obs_X, obs_y, test_size = test_size)
     input_size = X.shape[1:]
     output_size = y.shape[1:]
     info["input_size"] = input_size[0] if len(input_size) == 1 else input_size
@@ -85,6 +110,11 @@ def get_task(trajectory, bouncing_list, time_steps = 3, forward_steps = 1, is_fl
         y_test = Variable(torch.FloatTensor(y_test), requires_grad = False)
         reflected_train = Variable(torch.ByteTensor(reflected_train), requires_grad = False)
         reflected_test = Variable(torch.ByteTensor(reflected_test), requires_grad = False)
+        if obs_array is not None:
+            obs_X_train = Variable(torch.FloatTensor(obs_X_train), requires_grad = False)
+            obs_y_train = Variable(torch.FloatTensor(obs_y_train), requires_grad = False)
+            obs_X_test = Variable(torch.FloatTensor(obs_X_test), requires_grad = False)
+            obs_y_test = Variable(torch.FloatTensor(obs_y_test), requires_grad = False)
         if is_cuda:
             X_train = X_train.cuda()
             y_train = y_train.cuda()
@@ -92,15 +122,26 @@ def get_task(trajectory, bouncing_list, time_steps = 3, forward_steps = 1, is_fl
             y_test = y_test.cuda()
             reflected_train = reflected_train.cuda()
             reflected_test = reflected_test.cuda()
-    return ((X_train, y_train), (X_test, y_test), (reflected_train, reflected_test)), info
+            if obs_array is not None:
+                obs_X_train = obs_X_train.cuda()
+                obs_y_train = obs_y_train.cuda()
+                obs_X_test = obs_X_test.cuda()
+                obs_y_test = obs_y_test.cuda()
+    if obs_array is None:
+        return ((X_train, y_train), (X_test, y_test), (reflected_train, reflected_test)), info
+    else:
+        info["states"] = ((X_train, y_train), (X_test, y_test))
+        return ((obs_X_train, obs_y_train), (obs_X_test, obs_y_test), (reflected_train, reflected_test)), info
 
 
 def get_env_data(
     env_name,
+    data_format = "states",
     input_dims = 1,
     output_dims = 0,
     ball_idx = 0,
     num_examples = 10000,
+    test_size = 0.2,
     is_cuda = False,
     isplot = 1,
     render = False,
@@ -135,6 +176,8 @@ def get_env_data(
         from AI_scientist.variational.envs import make_env
         from AI_scientist.util import plot_matrices
         import random
+
+        # Obtain settings from kwargs:
         time_steps = kwargs["time_steps"] if "time_steps" in kwargs else 3
         forward_steps = kwargs["forward_steps"] if "forward_steps" in kwargs else 1
         episode_length = kwargs["episode_length"] if "episode_length" in kwargs else 100
@@ -152,6 +195,7 @@ def get_env_data(
         max_distance = env_settings["max_distance"] if "max_distance" in env_settings else None
         input_dims = env_settings["input_dims"] if "input_dims" in env_settings else input_dims
 
+        # Reset certain aspects of the environment:
         if "screen_width" in kwargs:
             print("corrected screen_width: {0}".format(kwargs["screen_width"]))
             env_settings["screen_width"] = kwargs["screen_width"]
@@ -183,6 +227,7 @@ def get_env_data(
             ball_x = None
             ball_y = None
             is_break = False
+            # Obtain the frames:
             for i in range(episode_length):
                 obs, _, _, info = env.step(1)
                 obs_var_candidate.append(obs)
@@ -209,32 +254,38 @@ def get_env_data(
                 if render:
                     time.sleep(0.1)
                     env.render('human')
+            # Only add the episode if it is does not break:
             if not is_break:
                 obs_var = obs_var + obs_var_candidate
                 info_list = info_list + info_list_candidate
                 bouncing_list = bouncing_list + bouncing_list_candidate
+                obs_var.append({})
                 info_list.append({})
                 bouncing_list.append({})
                 k += 1
-        obs_var = np.array(obs_var)
-        obs_var = Variable(torch.FloatTensor(obs_var), requires_grad = False)
-
         if isplot > 0:
-            plot_matrices(obs_var[:30,0,...].data.numpy())
+            plot_matrices(np.array(obs_var[:30]).squeeze())
 
+        # Process the info_list into numpy format:
         perception_dict = process_object_info(info_list, chosen_dim = input_dims)
         bouncing_list = [element[ball_idx][0] if len(element) > 0 else np.NaN for element in bouncing_list]
+        if data_format == "images":
+            obs_array = np.array([element if len(element) > 0 else np.full(obs_var[0].shape, np.nan) for element in obs_var])
+        else:
+            obs_array = None
         trajectory0 = perception_dict["ball_{0}".format(ball_idx)]
         width = env_settings["screen_width"] if input_dims == 0 else env_settings["screen_height"]
         ((X_train, y_train), (X_test, y_test), (reflected_train, reflected_test)), info =             get_task(trajectory0,
                      bouncing_list = bouncing_list,
+                     obs_array = obs_array,
                      time_steps = time_steps,
                      forward_steps = forward_steps,
                      is_flatten = is_flatten,
                      is_cuda = is_cuda,
                      width = width,
+                     test_size = test_size
                     )
-        if output_dims is not None:
+        if output_dims is not None and data_format == "states":
             if not isinstance(output_dims, list) and not isinstance(output_dims, tuple):
                 output_dims = [output_dims]
             output_dims = torch.LongTensor(np.array(output_dims))
@@ -242,14 +293,18 @@ def get_env_data(
                 output_dims = output_dims.cuda()
             y_train = y_train[:, output_dims]
             y_test = y_test[:, output_dims]
+
         if "nobounce" in env_name_split:
-            # reflected_train = ((torch.abs((X_train[:,0] + X_train[:,2] - 2 * X_train[:,1])) > 1e-5) | (torch.abs((X_train[:,1] + y_train[:, 0] - 2 * X_train[:,2])) > 1e-5)).long()
-            # reflected_test = ((torch.abs((X_test[:,0] + X_test[:,2] - 2 * X_test[:,1])) > 1e-5) | (torch.abs((X_test[:,1] + y_test[:, 0] - 2 * X_test[:,2])) > 1e-5)).long()
-            
-            X_train = X_train[reflected_train.unsqueeze(1) == 0].view(-1, X_train.size(1))
-            y_train = y_train[reflected_train.unsqueeze(1) == 0].view(-1, y_train.size(1))
-            X_test = X_test[reflected_test.unsqueeze(1) == 0].view(-1, X_test.size(1))
-            y_test = y_test[reflected_test.unsqueeze(1) == 0].view(-1, y_test.size(1))
+            if obs_array is None:
+                X_train = X_train[reflected_train.unsqueeze(1) == 0].view(-1, X_train.size(1))
+                y_train = y_train[reflected_train.unsqueeze(1) == 0].view(-1, y_train.size(1))
+                X_test = X_test[reflected_test.unsqueeze(1) == 0].view(-1, X_test.size(1))
+                y_test = y_test[reflected_test.unsqueeze(1) == 0].view(-1, y_test.size(1))
+            else:
+                X_train = X_train[reflected_train.view(reflected_train.size(0), 1,1,1) == 0].view(-1, *X_train.size()[1:])
+                y_train = y_train[reflected_train.view(reflected_train.size(0), 1,1,1) == 0].view(-1, *y_train.size()[1:])
+                X_test = X_test[reflected_test.view(reflected_test.size(0), 1,1,1) == 0].view(-1, *X_test.size()[1:])
+                y_test = y_test[reflected_test.view(reflected_test.size(0), 1,1,1) == 0].view(-1, *y_test.size()[1:])
             reflected_train = reflected_train[reflected_train == 0]
             reflected_test = reflected_test[reflected_test == 0]
     return ((X_train, y_train), (X_test, y_test), (reflected_train, reflected_test)), info

@@ -532,10 +532,10 @@ def clone_net(generative_Net, layer_type = "Simple_Layer", clone_parameters = Tr
 def get_nets(
     input_size,
     output_size,
+    main_hidden_neurons = [20, 20],
     pre_pooling_neurons = 60,
     statistics_output_neurons = 10,
     num_context_neurons = 0,
-    main_hidden_neurons = [20, 20],
     struct_param_gen_base = None,
     struct_param_pre = None,
     struct_param_post = None,
@@ -641,9 +641,9 @@ def get_tasks(task_id_list, num_train, num_test, task_settings = {}, is_cuda = F
             task_mode = task_id.split("_")[1]
             task = get_master_function(task_settings["z_settings"], mode = task_mode, settings = task_settings, num_examples = num_examples, is_cuda = is_cuda,)
         elif task_id == "bounce-states":
-            task = get_bouncing_states(num_examples = num_examples, is_cuda = is_cuda, **kwargs)
+            task = get_bouncing_states(data_format = "states", settings = task_settings, num_examples = num_examples, is_cuda = is_cuda, **kwargs)
         elif task_id == "bounce-images":
-            task = get_bouncing_images(num_examples = num_examples, is_cuda = is_cuda, **kwargs)
+            task = get_bouncing_states(data_format = "images", settings = task_settings, num_examples = num_examples, is_cuda = is_cuda, **kwargs)
         else:
             task = Dataset_Gen(task_id, settings = {"domain": (-3,3),
                                                     "num_train": 200,
@@ -1143,22 +1143,36 @@ def get_master_function(
     return ((X_train, y_train), (X_test, y_test)), {"z": z}
 
 
-def get_bouncing_states(num_examples, is_cuda = False, **kwargs):
+def get_bouncing_states(settings, num_examples, data_format = "states", is_cuda = False, **kwargs):
     from AI_scientist.variational.util_variational import get_env_data
     from AI_scientist.settings.a2c_env_settings import ENV_SETTINGS_CHOICE
     render = kwargs["render"] if "render" in kwargs else False
+    test_size = settings["test_size"] if "test_size" in settings else 0.2
     env_name = "envBounceStates"
     screen_size = ENV_SETTINGS_CHOICE[env_name]["screen_height"]
     ball_radius = ENV_SETTINGS_CHOICE[env_name]["ball_radius"]
+    
     vertex_bottom_left = tuple(np.random.rand(2) * screen_size / 4 + ball_radius)
     vertex_bottom_right = (screen_size - np.random.rand() * screen_size / 4 - ball_radius, np.random.rand() * screen_size / 4 + ball_radius)
     vertex_top_right = tuple(screen_size - np.random.rand(2) * screen_size / 4 - ball_radius)
     vertex_top_left = (np.random.rand() * screen_size / 4 + ball_radius, screen_size - np.random.rand() * screen_size / 4 - ball_radius)
     boundaries = [vertex_bottom_left, vertex_bottom_right, vertex_top_right, vertex_top_left]
-    ((X_train, y_train), (X_test, y_test), (reflected_train, reflected_test)), info = get_env_data(
-            env_name, num_examples = num_examples, isplot = False, is_cuda = False, output_dims = (0,1),
-            episode_length = 200, boundaries = boundaries, render = render, is_flatten = True,
-            max_range = (0, screen_size), verbose = True)
+    
+    ((X_train, y_train), (X_test, y_test), (reflected_train, reflected_test)), info =         get_env_data(
+            env_name,
+            data_format = data_format,
+            num_examples = num_examples,
+            test_size = test_size,
+            isplot = False,
+            is_cuda = False,
+            output_dims = (0,1),
+            episode_length = 200,
+            boundaries = boundaries,
+            render = render,
+            is_flatten = True,
+            max_range = (0, screen_size),
+            verbose = True,
+        )
     if is_cuda:
         X_train = X_train.cuda()
         y_train = y_train.cuda()
