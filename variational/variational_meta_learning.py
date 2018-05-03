@@ -315,7 +315,10 @@ class Generative_Net(nn.Module):
         for i, W_struct_param in enumerate(self.W_struct_param_list):
             model_dict["W_gen_{0}".format(i)] = getattr(self, "W_gen_{0}".format(i)).model_dict
             model_dict["b_gen_{0}".format(i)] = getattr(self, "b_gen_{0}".format(i)).model_dict
-        model_dict["latent_param"] = self.latent_param.data.numpy() if self.latent_param is not None else None
+        if self.latent_param is None:
+            model_dict["latent_param"] = None
+        else:
+            model_dict["latent_param"] = self.latent_param.cpu().data.numpy() if self.is_cuda else self.latent_param.data.numpy()
         if hasattr(self, "context"):
             model_dict["context"] = self.context.data.numpy() if not self.is_cuda else self.context.cpu().data.numpy()
         return model_dict
@@ -665,10 +668,10 @@ def get_tasks(task_id_list, num_train, num_test, task_settings = {}, is_cuda = F
 
 
 def evaluate(task, statistics_Net, generative_Net, generative_Net_logstd = None, criterion = None, is_VAE = False, is_regulated_net = False):
-    (_, (X_test, y_test)), _ = task
+    ((X_train, y_train), (X_test, y_test)), _ = task
     loss_fun = Loss_Fun(core = "mse")
     if is_VAE:
-        statistics_mu, statistics_logvar = statistics_Net(torch.cat([X_test, y_test], 1))
+        statistics_mu, statistics_logvar = statistics_Net(torch.cat([X_train, y_train], 1))
         statistics_sampled = sample_Gaussian(statistics_mu, statistics_logvar)
         y_pred_sampled = generative_Net(X_test, statistics_sampled)
         loss_sampled, KLD = criterion(y_pred_sampled, y_test, statistics_mu, statistics_logvar)
@@ -679,14 +682,14 @@ def evaluate(task, statistics_Net, generative_Net, generative_Net_logstd = None,
         return loss.data[0], loss_sampled.data[0], mse.data[0], KLD.data[0]
     else:
         if generative_Net_logstd is None:
-            statistics = statistics_Net(torch.cat([X_test, y_test], 1))
+            statistics = statistics_Net(torch.cat([X_train, y_train], 1))
             if is_regulated_net:
                 statistics = get_regulated_statistics(generative_Net, statistics)
             y_pred = generative_Net(X_test, statistics)
             loss = criterion(y_pred, y_test)
             mse = loss_fun(y_pred, y_test)
         else:
-            statistics_mu, statistics_logvar = statistics_Net(torch.cat([X_test, y_test], 1))
+            statistics_mu, statistics_logvar = statistics_Net(torch.cat([X_train, y_train], 1))
             if is_regulated_net:
                 statistics_mu = get_regulated_statistics(generative_Net, statistics_mu)
                 statistics_logvar = get_regulated_statistics(generative_Net_logstd, statistics_logvar)
@@ -778,10 +781,10 @@ def plot_individual_tasks(tasks, statistics_Net, generative_Net, generative_Net_
     else:
         chosen_id = sorted(list(tasks.keys()))
     i = 0
+    is_cuda = tasks[list(tasks.keys())[0]][0][0][0].is_cuda
     if xlim is not None:
         X_linspace = Variable(torch.linspace(xlim[0], xlim[1], 200).unsqueeze(1))
-        if tasks[list(tasks.keys())[0]][0][0][0].is_cuda:
-            is_cuda = True
+        if is_cuda:
             X_linspace = X_linspace.cuda()
     for task_id, task in tasks.items():
         ((X_train, y_train), (X_test, y_test)), info = task
@@ -861,6 +864,87 @@ def plot_individual_tasks(tasks, statistics_Net, generative_Net, generative_Net_
         i += 1
     plt.show()
     return [statistics_list]
+
+
+def plot_individual_tasks_bounce(tasks, num_examples_show = 40, num_tasks_show = 6, master_model = None, num_shots = None):
+    import matplotlib.pylab as plt
+    fig = plt.figure(figsize = (25, num_tasks_show / 3 * 8))
+    plt.subplots_adjust(hspace = 0.4)
+    tasks_key_show = np.random.choice(list(tasks.keys()), num_tasks_show)
+    for k, task_key in enumerate(tasks_key_show):
+        ((X_train, y_train), (X_test, y_test)), _ = tasks[task_key]
+        num_steps = int(X_test.size(1) / 2)
+        is_cuda = X_train.is_cuda
+        X_test_numpy = X_test.cpu() if is_cuda else X_test
+        y_test_numpy = y_test.cpu() if is_cuda else y_test
+        X_test_numpy = X_test_numpy.data.numpy().reshape(-1, num_steps, 2)
+        y_test_numpy = y_test_numpy.data.numpy().reshape(-1, 1, 2)
+        if master_model is not None:
+            if num_shots is None:
+                statistics = master_model.statistics_Net.forward_inputs(X_train, y_train)
+            else:
+                idx = torch.LongTensor(np.random.choice(range(len(X_train)), num_shots, replace = False))
+                if is_cuda:
+                    idx = idx.cuda()
+                statistics = master_model.statistics_Net.forward_inputs(X_train[idx], y_train[idx])
+            y_pred = master_model.generative_Net(X_test, statistics)
+            y_pred_numpy = y_pred.cpu() if is_cuda else y_pred
+            y_pred_numpy = y_pred_numpy.data.numpy().reshape(-1, 1, 2)
+        
+        ax = fig.add_subplot(int(np.ceil(num_tasks_show / float(3))), 3, k + 1)
+        for i in range(len(X_test_numpy)):
+            if i > num_examples_show:
+                break
+            x_ele = X_test_numpy[i]
+            y_ele = y_test_numpy[i]
+            ax.plot(np.concatenate((x_ele[:,0], y_ele[:,0])), np.concatenate((x_ele[:,1], y_ele[:,1])), ".-", color = COLOR_LIST[i % len(COLOR_LIST)])
+            ax.plot([y_ele[0,0]], [y_ele[0,1]], "o", color = "r")
+            ax.set_title(task_key)
+            if master_model is not None:
+                y_pred_ele = y_pred_numpy[i]
+                ax.plot(np.concatenate((x_ele[:,0], y_pred_ele[:,0])), np.concatenate((x_ele[:,1], y_pred_ele[:,1])), ".--", color = COLOR_LIST[i % len(COLOR_LIST)])
+                ax.plot([y_pred_ele[0,0]], [y_pred_ele[0, 1]], "o", color = "b")
+    plt.show()
+
+
+def plot_few_shot_loss(master_model, tasks, isplot = True):
+    import matplotlib.pylab as plt
+    plt.figure(figsize = (8,6))
+    num_shots_list = [20, 30, 40, 50, 70, 100, 200, 300, 500, 1000]
+    mse_list_whole = []
+    for task_key, task in tasks.items():
+        mse_list = []
+        ((X_train, y_train), (X_test, y_test)), _ = tasks[task_key]
+        is_cuda = X_train.is_cuda
+        for num_shots in num_shots_list:
+            idx = torch.LongTensor(np.random.choice(range(len(X_train)), num_shots, replace = False))
+            if is_cuda:
+                idx = idx.cuda()
+            X_few_shot = X_train[idx]
+            y_few_shot = y_train[idx]
+            statistics = master_model.statistics_Net.forward_inputs(X_few_shot, y_few_shot)
+            y_test_pred = master_model.generative_Net(X_test, statistics)
+            mse_list.append(nn.MSELoss()(y_test_pred, y_test).data[0])
+        mse_list_whole.append(mse_list)
+    mse_list_whole = np.array(mse_list_whole)
+    mse_mean = mse_list_whole.mean(0)
+    mse_std = mse_list_whole.std(0)
+    if isplot:
+        plt.errorbar(num_shots_list, mse_mean, mse_std, fmt = "o")
+        ax = plt.gca()
+        ax.set_xscale("log")
+        ax.set_xlabel("number of shots")
+        ax.set_ylabel("mse")
+        plt.show()
+
+        plt.errorbar(num_shots_list, mse_mean, mse_std, fmt = "o")
+        ax = plt.gca()
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        ax.set_xlabel("number of shots")
+        ax.set_ylabel("mse")
+        plt.show()
+    return mse_list_whole
 
 
 def get_corrcoef(x, y):

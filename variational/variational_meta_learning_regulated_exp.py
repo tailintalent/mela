@@ -28,6 +28,7 @@ from AI_scientist.pytorch.util_pytorch import Loss_with_uncertainty
 from AI_scientist.variational.variational_meta_learning import Master_Model, Statistics_Net, Generative_Net, load_model_dict, get_regulated_statistics
 from AI_scientist.variational.variational_meta_learning import VAE_Loss, sample_Gaussian, clone_net, get_nets, get_tasks, evaluate, get_reg, load_trained_models
 from AI_scientist.variational.variational_meta_learning import plot_task_ensembles, plot_individual_tasks, plot_statistics_vs_z, plot_data_record, get_corrcoef
+from AI_scientist.variational.variational_meta_learning import plot_few_shot_loss, plot_individual_tasks_bounce
 from AI_scientist.variational.variational_meta_learning import get_latent_model_data, get_polynomial_class, get_Legendre_class, get_master_function
 
 seed = 1
@@ -65,7 +66,7 @@ VAE_beta = 0.2
 output_size = 2
 lr = 5e-5
 num_train_tasks = 100
-num_test_tasks = 50
+num_test_tasks = 100
 batch_size_task = min(100, num_train_tasks)
 num_backwards = 1
 num_iter = 20000
@@ -159,7 +160,7 @@ if is_regulated_net:
             [1, "Simple_Layer", {"activation": "linear"}],
     ]
     generative_Net = Net(input_size = input_size, struct_param = struct_param_regulated_Net, settings = {"activation": activation_model})
-master_model = Master_Model(statistics_Net, generative_Net, generative_Net_logstd)
+master_model = Master_Model(statistics_Net, generative_Net, generative_Net_logstd, is_cuda = is_cuda)
 
 # Setting up optimizer and loss functions:
 if is_uncertainty_net:
@@ -329,6 +330,7 @@ for i in range(num_iter + 1):
         mse_test_list = [data_record["mse"][task_key][-1] for task_key in tasks_test]
         reg_train_list = [data_record["reg"][task_key][-1] for task_key in tasks_train]
         reg_test_list = [data_record["reg"][task_key][-1] for task_key in tasks_test]
+        mse_few_shot = plot_few_shot_loss(master_model, tasks_test, isplot = isplot)
         record_data(data_record, 
                     [np.mean(loss_train_list), np.median(loss_train_list), np.mean(reg_train_list), i,
                      np.mean(loss_test_list), np.median(loss_test_list), np.mean(reg_test_list),
@@ -336,12 +338,14 @@ for i in range(num_iter + 1):
                      np.mean(loss_test_sampled_list), np.median(loss_test_sampled_list),
                      np.mean(mse_train_list), np.median(mse_train_list), 
                      np.mean(mse_test_list), np.median(mse_test_list), 
+                     mse_few_shot,
                     ], 
                     ["loss_mean_train", "loss_median_train", "reg_mean_train", "iter",
                      "loss_mean_test", "loss_median_test", "reg_mean_test",
                      "loss_sampled_mean_train", "loss_sampled_median_train",
                      "loss_sampled_mean_test", "loss_sampled_median_test", 
                      "mse_mean_train", "mse_median_train", "mse_mean_test", "mse_median_test", 
+                     "mse_few_shot",
                     ])
         if isplot:
             plot_data_record(data_record, idx = -1, is_VAE = is_VAE)
@@ -365,10 +369,13 @@ for i in range(num_iter + 1):
             plot_statistics_vs_z(z_list_test, statistics_list_test)
 
             # Plotting individual test data:
-            print("train tasks:")
-            plot_individual_tasks(tasks_train, statistics_Net, generative_Net, generative_Net_logstd = generative_Net_logstd, is_VAE = is_VAE, is_regulated_net = is_regulated_net, xlim = task_settings["xlim"])
-            print("test tasks:")
-            plot_individual_tasks(tasks_test, statistics_Net, generative_Net, generative_Net_logstd = generative_Net_logstd, is_VAE = is_VAE, is_regulated_net = is_regulated_net, xlim = task_settings["xlim"])
+            if "bounce" in task_id_list[0]:
+                plot_individual_tasks_bounce(tasks_test, num_examples_show = 40, num_tasks_show = 6, master_model = master_model, num_shots = 200)
+            else:
+                print("train tasks:")
+                plot_individual_tasks(tasks_train, statistics_Net, generative_Net, generative_Net_logstd = generative_Net_logstd, is_VAE = is_VAE, is_regulated_net = is_regulated_net, xlim = task_settings["xlim"])
+                print("test tasks:")
+                plot_individual_tasks(tasks_test, statistics_Net, generative_Net, generative_Net_logstd = generative_Net_logstd, is_VAE = is_VAE, is_regulated_net = is_regulated_net, xlim = task_settings["xlim"])
         print("=" * 50 + "\n\n")
         try:
             sys.stdout.flush()
