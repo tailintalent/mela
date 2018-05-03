@@ -1,3 +1,9 @@
+
+# coding: utf-8
+
+# In[1]:
+
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -5,6 +11,10 @@ import torch.optim as optim
 from torch.autograd import Variable
 from sklearn.model_selection import train_test_split
 import time
+
+
+# In[2]:
+
 
 def process_object_info(percept_list, chosen_dim = None):
     """Transform the percepted list of dict structure into a plane dictionary structure."""
@@ -110,8 +120,7 @@ def get_env_data(
                 func_types.append("quadratic")
             else:
                 raise Exception("letter {0} is not a valid function type!".format(letter))
-        ((X_train, y_train), (X_test, y_test), (reflected_train, reflected_test)), info = \
-            get_piecewise_dataset(input_size = input_size, 
+        ((X_train, y_train), (X_test, y_test), (reflected_train, reflected_test)), info =             get_piecewise_dataset(input_size = input_size, 
                                   num_pieces = num_pieces,
                                   num_boundaries = num_boundaries,
                                   func_types = func_types,
@@ -217,8 +226,7 @@ def get_env_data(
         bouncing_list = [element[ball_idx][0] if len(element) > 0 else np.NaN for element in bouncing_list]
         trajectory0 = perception_dict["ball_{0}".format(ball_idx)]
         width = env_settings["screen_width"] if input_dims == 0 else env_settings["screen_height"]
-        ((X_train, y_train), (X_test, y_test), (reflected_train, reflected_test)), info = \
-            get_task(trajectory0,
+        ((X_train, y_train), (X_test, y_test), (reflected_train, reflected_test)), info =             get_task(trajectory0,
                      bouncing_list = bouncing_list,
                      time_steps = time_steps,
                      forward_steps = forward_steps,
@@ -245,3 +253,4 @@ def get_env_data(
             reflected_train = reflected_train[reflected_train == 0]
             reflected_test = reflected_test[reflected_test == 0]
     return ((X_train, y_train), (X_test, y_test), (reflected_train, reflected_test)), info
+
