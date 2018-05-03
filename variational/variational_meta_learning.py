@@ -986,7 +986,7 @@ def plot_statistics_vs_z(z_list, statistics_list, mode = "corrcoef", title = Non
     if mode == "corrcoef":
         print("statistics (row) vs. z (column) pearsonr correlation coefficient (abs value):")
         cross_corrcoef = get_corrcoef(z_list, statistics_list)
-        plot_matrices([np.abs(corrcoef)], title = title)
+        plot_matrices([np.abs(cross_corrcoef)], title = title)
         print("statistics correlation matrix:")
         self_corrcoef = np.corrcoef(statistics_list, rowvar = False)
         plot_matrices([np.abs(self_corrcoef)])
