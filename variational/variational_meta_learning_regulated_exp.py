@@ -34,7 +34,6 @@ seed = 1
 np.random.seed(seed)
 torch.manual_seed(seed)
 is_cuda = torch.cuda.is_available()
-# is_cuda = False
 
 
 # ### Training:
@@ -100,7 +99,7 @@ loss_core = get_args(loss_core, 16)
 array_id = get_args(array_id, 17)
 
 try:
-    get_ipython().run_line_magic('matplotlib', 'inline')
+    get_ipython().magic(u'matplotlib inline')
     isplot = True
 except:
     isplot = False
@@ -217,6 +216,8 @@ for i in range(num_iter + 1):
     if optim_mode == "individual":
         if is_VAE:
             KLD_total = Variable(torch.FloatTensor([0]), requires_grad = False)
+            if is_cuda:
+                KLD_total = KLD_total.cuda()
         for task_key, task in tasks_train.items():
             if task_key not in chosen_task_keys:
                 continue
@@ -257,6 +258,8 @@ for i in range(num_iter + 1):
     elif optim_mode == "sum":
         optimizer.zero_grad()
         loss_total = Variable(torch.FloatTensor([0]), requires_grad = False)
+        if is_cuda:
+            loss_total = loss_total.cuda()
         for task_key, task in tasks_train.items():
             if task_key not in chosen_task_keys:
                 continue
