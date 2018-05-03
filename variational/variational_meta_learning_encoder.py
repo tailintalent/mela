@@ -7,18 +7,14 @@
 import numpy as np
 import pickle
 from itertools import chain
-from collections import OrderedDict
 from sklearn.model_selection import train_test_split
-from sklearn.decomposition import PCA
 import matplotlib.pylab as plt
 from copy import deepcopy
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.autograd import Variable
-import matplotlib.pyplot as plt
-import warnings
-warnings.filterwarnings(action="ignore", module="scipy", message="^internal gelsd")
+
 import sys, os
 sys.path.append(os.path.join(os.path.dirname("__file__"), '..', '..'))
 from AI_scientist.util import plot_matrices, make_dir, get_struct_str, get_args, Early_Stopping, record_data, manifold_embedding
@@ -42,17 +38,18 @@ is_cuda = torch.cuda.is_available()
 
 
 task_id_list = [
-# "latent_model_linear",
-# "polynomial_3",
-# "Legendre_3",
-# "master_sawtooth",
-# "master_sin",
-# "master_Gaussian",
-# "master_tanh",
-# "master_softplus",
+# "latent-linear",
+# "polynomial-3",
+# "Legendre-3",
+# "M-sawtooth",
+# "M-sin",
+# "M-Gaussian",
+# "M-tanh",
+# "M-softplus",
 "bounce-states",
+# "bounce-images",
 ]
-exp_id = "encoder"
+exp_id = "test"
 input_size = 6
 statistics_output_neurons = 8
 is_VAE = False
@@ -60,7 +57,6 @@ is_uncertainty_net = False
 is_regulated_net = False
 is_load_data = False
 VAE_beta = 0.2
-main_hidden_neurons = [40, 40]
 
 output_size = 2
 lr = 5e-5
@@ -69,14 +65,15 @@ num_test_tasks = 50
 batch_size_task = min(100, num_train_tasks)
 num_backwards = 1
 num_iter = 20000
-pre_pooling_neurons = 100
+pre_pooling_neurons = 400
 num_context_neurons = 0
 statistics_pooling = "max"
+main_hidden_neurons = (40, 40, 40)
 patience = 400
 reg_amp = 1e-6
 activation_gen = "leakyRelu"
 activation_model = "leakyRelu"
-optim_mode = "individual"
+optim_mode = "indi"
 loss_core = "huber"
 array_id = "0"
 
@@ -90,13 +87,14 @@ batch_size_task = get_args(batch_size_task, 7, type = "int")
 pre_pooling_neurons = get_args(pre_pooling_neurons, 8, type = "int")
 num_context_neurons = get_args(num_context_neurons, 9, type = "int")
 statistics_pooling = get_args(statistics_pooling, 10)
-reg_amp = get_args(reg_amp, 11, type = "float")
-activation_gen = get_args(activation_gen, 12)
-activation_model = get_args(activation_model, 13)
-optim_mode = get_args(optim_mode, 14)
-is_uncertainty_net = get_args(is_uncertainty_net, 15, "bool")
-loss_core = get_args(loss_core, 16)
-array_id = get_args(array_id, 17)
+main_hidden_neurons = get_args(main_hidden_neurons, 11, "tuple")
+reg_amp = get_args(reg_amp, 12, type = "float")
+activation_gen = get_args(activation_gen, 13)
+activation_model = get_args(activation_model, 14)
+optim_mode = get_args(optim_mode, 15)
+is_uncertainty_net = get_args(is_uncertainty_net, 16, "bool")
+loss_core = get_args(loss_core, 17)
+array_id = get_args(array_id, 18)
 
 try:
     get_ipython().magic(u'matplotlib inline')
@@ -131,7 +129,8 @@ struct_param_gen_base = [
 isParallel = False
 inspect_interval = 50
 save_interval = 500
-filename = variational_model_PATH + "/trained_models/{0}/Net_{1}_input_{2}_({3},{4})_statistics-neurons_{5}_pre_{6}_pooling_{7}_context_{8}_batch_{9}_backward_{10}_VAE_{11}_{12}_uncertainty_{13}_lr_{14}_reg_{15}_actgen_{16}_actmodel_{17}_struct_{18}_{19}_core_{20}_{21}_".format(exp_id, task_id_list, input_size, num_train_tasks, num_test_tasks, statistics_output_neurons, pre_pooling_neurons, statistics_pooling, num_context_neurons, batch_size_task, num_backwards, is_VAE, VAE_beta, is_uncertainty_net, lr, reg_amp, activation_gen, activation_model, get_struct_str(struct_param_gen_base), optim_mode, loss_core, exp_id)
+filename = variational_model_PATH + "/trained_models/{0}/Net_{1}_input_{2}_({3},{4})_stat_{5}_pre_{6}_pool_{7}_context_{8}_hid_{9}_batch_{10}_back_{11}_VAE_{12}_{13}_uncer_{14}_lr_{15}_reg_{16}_actgen_{17}_actmodel_{18}_struct_{19}_{20}_core_{21}_{22}_".format(
+    exp_id, task_id_list, input_size, num_train_tasks, num_test_tasks, statistics_output_neurons, pre_pooling_neurons, statistics_pooling, num_context_neurons, main_hidden_neurons, batch_size_task, num_backwards, is_VAE, VAE_beta, is_uncertainty_net, lr, reg_amp, activation_gen, activation_model, get_struct_str(struct_param_gen_base), optim_mode, loss_core, exp_id)
 make_dir(filename)
 print(filename)
 
@@ -213,7 +212,7 @@ record_data(data_record, [exp_id, tasks_train, tasks_test, task_id_list, task_se
 # Training:
 for i in range(num_iter + 1):
     chosen_task_keys = np.random.choice(list(tasks_train.keys()), batch_size_task, replace = False).tolist()
-    if optim_mode == "individual":
+    if optim_mode == "indi":
         if is_VAE:
             KLD_total = Variable(torch.FloatTensor([0]), requires_grad = False)
             if is_cuda:

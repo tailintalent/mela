@@ -584,7 +584,7 @@ def get_nets(
     
     W_struct_param_list = []
     b_struct_param_list = []
-    all_neurons = main_hidden_neurons + [output_size]
+    all_neurons = list(main_hidden_neurons) + [output_size]
     for i, num_neurons in enumerate(all_neurons):
         num_neurons_prev = all_neurons[i - 1] if i > 0 else input_size
         struct_param_weight = struct_param_gen_base + [[(num_neurons_prev, num_neurons), layer_type, {"activation": "linear"}]]
@@ -629,16 +629,16 @@ def get_tasks(task_id_list, num_train, num_test, task_settings = {}, is_cuda = F
     for j in range(num_tasks):
         task_id = np.random.choice(task_id_list)
         num_examples = task_settings["num_examples"] if "num_examples" in task_settings else 2000
-        if task_id[:12] == "latent_model":
+        if task_id[:12] == "latent-linear":
             task = get_latent_model_data(task_settings["z_settings"], settings = task_settings, num_examples = num_examples, is_cuda = is_cuda,)
         elif task_id[:10] == "polynomial":
-            order = int(task_id.split("_")[1])
+            order = int(task_id.split("-")[1])
             task = get_polynomial_class(task_settings["z_settings"], order = order, settings = task_settings, num_examples = num_examples, is_cuda = is_cuda,)
         elif task_id[:8] == "Legendre":
-            order = int(task_id.split("_")[1])
+            order = int(task_id.split("-")[1])
             task = get_Legendre_class(task_settings["z_settings"], order = order, settings = task_settings, num_examples = num_examples, is_cuda = is_cuda,)
-        elif task_id[:6] == "master":
-            task_mode = task_id.split("_")[1]
+        elif task_id[:2] == "M-":
+            task_mode = task_id.split("-")[1]
             task = get_master_function(task_settings["z_settings"], mode = task_mode, settings = task_settings, num_examples = num_examples, is_cuda = is_cuda,)
         elif task_id == "bounce-states":
             task = get_bouncing_states(data_format = "states", settings = task_settings, num_examples = num_examples, is_cuda = is_cuda, **kwargs)
