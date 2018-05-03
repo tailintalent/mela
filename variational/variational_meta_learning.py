@@ -535,6 +535,7 @@ def get_nets(
     pre_pooling_neurons = 60,
     statistics_output_neurons = 10,
     num_context_neurons = 0,
+    main_hidden_neurons = [20, 20],
     struct_param_gen_base = None,
     struct_param_pre = None,
     struct_param_post = None,
@@ -580,29 +581,35 @@ def get_nets(
         [60, layer_type, {}],
         [60, layer_type, {}],
     ] if struct_param_gen_base is None else struct_param_gen_base
-    struct_param_weight1 = struct_param_gen_base + [[(input_size, 20), layer_type, {"activation": "linear"}]]
-    struct_param_weight2 = struct_param_gen_base + [[(20, 20), layer_type, {"activation": "linear"}]]
-    struct_param_weight3 = struct_param_gen_base + [[(20, output_size), layer_type, {"activation": "linear"}]]
-    struct_param_bias1 = struct_param_gen_base + [[20, layer_type, {"activation": "linear"}]]
-    struct_param_bias2 = struct_param_gen_base + [[20, layer_type, {"activation": "linear"}]]
-    struct_param_bias3 = struct_param_gen_base + [[output_size, layer_type,  {"activation": "linear"}]]
+    
+    W_struct_param_list = []
+    b_struct_param_list = []
+    all_neurons = main_hidden_neurons + [output_size]
+    for i, num_neurons in enumerate(all_neurons):
+        num_neurons_prev = all_neurons[i - 1] if i > 0 else input_size
+        struct_param_weight = struct_param_gen_base + [[(num_neurons_prev, num_neurons), layer_type, {"activation": "linear"}]]
+        struct_param_bias = struct_param_gen_base + [[num_neurons, layer_type, {"activation": "linear"}]]
+        W_struct_param_list.append(struct_param_weight)
+        b_struct_param_list.append(struct_param_bias)
     generative_Net = Generative_Net(input_size = statistics_output_neurons,
                                     num_context_neurons = num_context_neurons,
-                                    W_struct_param_list = [struct_param_weight1, struct_param_weight2, struct_param_weight3],
-                                    b_struct_param_list = [struct_param_bias1, struct_param_bias2, struct_param_bias3],
+                                    W_struct_param_list = W_struct_param_list,
+                                    b_struct_param_list = b_struct_param_list,
                                     settings_generative = {"activation": activation_generative},
                                     settings_model = {"activation": activation_model},
                                     learnable_latent_param = learnable_latent_param,
+                                    last_layer_linear = True,
                                     is_cuda = is_cuda,
                                    )
     if is_uncertainty_net:
         generative_Net_logstd = Generative_Net(input_size = statistics_output_neurons,
                                                 num_context_neurons = num_context_neurons,
-                                                W_struct_param_list = [struct_param_weight1, struct_param_weight2, struct_param_weight3],
-                                                b_struct_param_list = [struct_param_bias1, struct_param_bias2, struct_param_bias3],
+                                                W_struct_param_list = W_struct_param_list,
+                                                b_struct_param_list = b_struct_param_list,
                                                 settings_generative = {"activation": activation_generative},
                                                 settings_model = {"activation": activation_model},
                                                 learnable_latent_param = learnable_latent_param,
+                                                last_layer_linear = True,
                                                 is_cuda = is_cuda,
                                                )
     else:
@@ -1149,7 +1156,9 @@ def get_bouncing_states(num_examples, is_cuda = False, **kwargs):
     vertex_top_left = (np.random.rand() * screen_size / 4 + ball_radius, screen_size - np.random.rand() * screen_size / 4 - ball_radius)
     boundaries = [vertex_bottom_left, vertex_bottom_right, vertex_top_right, vertex_top_left]
     ((X_train, y_train), (X_test, y_test), (reflected_train, reflected_test)), info = get_env_data(
-            env_name, num_examples = num_examples, isplot = False, is_cuda = False, episode_length = 200, boundaries = boundaries, render = render, is_flatten = True)
+            env_name, num_examples = num_examples, isplot = False, is_cuda = False, output_dims = (0,1),
+            episode_length = 200, boundaries = boundaries, render = render, is_flatten = True,
+            max_range = (0, screen_size), verbose = True)
     if is_cuda:
         X_train = X_train.cuda()
         y_train = y_train.cuda()

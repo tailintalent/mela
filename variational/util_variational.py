@@ -130,6 +130,9 @@ def get_env_data(
         forward_steps = kwargs["forward_steps"] if "forward_steps" in kwargs else 1
         episode_length = kwargs["episode_length"] if "episode_length" in kwargs else 100
         is_flatten = kwargs["is_flatten"] if "is_flatten" in kwargs else True
+        max_range = kwargs["max_range"] if "max_range" in kwargs else None
+        if max_range is not None:
+            value_min, value_max = max_range
         env_name_split = env_name.split("-")
         if "nobounce" in env_name_split:
             env_name_core = "-".join(env_name_split[:-1])
@@ -187,6 +190,13 @@ def get_env_data(
                             if verbose:
                                 print("{0} break for too large velocity.".format(k))
                             break
+                if max_range is not None:
+                    ball_x, ball_y = coordinates["ball"][ball_idx]
+                    if ball_x < value_min or ball_x > value_max or ball_y < value_min or ball_y > value_max:
+                        is_break = True
+                        if verbose:
+                            print("{0} break for going outsize the max_range".format(k))
+                        break
                 if render:
                     time.sleep(0.1)
                     env.render('human')
@@ -217,7 +227,7 @@ def get_env_data(
                      width = width,
                     )
         if output_dims is not None:
-            if not isinstance(output_dims, list):
+            if not isinstance(output_dims, list) and not isinstance(output_dims, tuple):
                 output_dims = [output_dims]
             output_dims = torch.LongTensor(np.array(output_dims))
             if is_cuda:

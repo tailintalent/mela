@@ -49,22 +49,24 @@ task_id_list = [
 # "master_sawtooth",
 # "master_sin",
 # "master_Gaussian",
-"master_tanh",
+# "master_tanh",
 # "master_softplus",
-# "2Dbouncing-states",
+"bounce-states",
 ]
-exp_id = "test2"
-input_size = 1
-statistics_output_neurons = 6
+exp_id = "test"
+input_size = 6
+statistics_output_neurons = 8
 is_VAE = False
 is_uncertainty_net = False
 is_regulated_net = False
+is_load_data = False
 VAE_beta = 0.2
+main_hidden_neurons = [40, 40]
 
-output_size = 1
+output_size = 2
 lr = 5e-5
 num_train_tasks = 100
-num_test_tasks = 100
+num_test_tasks = 50
 batch_size_task = min(100, num_train_tasks)
 num_backwards = 1
 num_iter = 20000
@@ -103,6 +105,7 @@ try:
 except:
     isplot = False
 
+# Settings:
 reg_dict = {"statistics_Net": {"weight": reg_amp, "bias": reg_amp},
             "generative_Net": {"weight": reg_amp, "bias": reg_amp, "W_gen": reg_amp, "b_gen": reg_amp}}
 task_settings = {
@@ -133,8 +136,8 @@ filename = variational_model_PATH + "/trained_models/{0}/Net_{1}_input_{2}_({3},
 make_dir(filename)
 print(filename)
 
-
-statistics_Net, generative_Net, generative_Net_logstd = get_nets(input_size = input_size, output_size = output_size, 
+# Obtain nets:
+statistics_Net, generative_Net, generative_Net_logstd = get_nets(input_size = input_size, output_size = output_size, main_hidden_neurons = main_hidden_neurons,
                                           pre_pooling_neurons = pre_pooling_neurons, statistics_output_neurons = statistics_output_neurons, num_context_neurons = num_context_neurons,
                                           struct_param_pre = struct_param_pre,
                                           struct_param_gen_base = struct_param_gen_base,
@@ -155,6 +158,8 @@ if is_regulated_net:
     ]
     generative_Net = Net(input_size = input_size, struct_param = struct_param_regulated_Net, settings = {"activation": activation_model})
 master_model = Master_Model(statistics_Net, generative_Net, generative_Net_logstd)
+
+# Setting up optimizer and loss functions:
 if is_uncertainty_net:
     optimizer = optim.Adam(chain.from_iterable([statistics_Net.parameters(), generative_Net.parameters(), generative_Net_logstd.parameters()]), lr = lr)
 else:
@@ -174,9 +179,28 @@ else:
     else:
         criterion = loss_fun_core
 early_stopping = Early_Stopping(patience = patience)
-tasks_train, tasks_test = get_tasks(task_id_list, num_train_tasks, num_test_tasks, task_settings = task_settings, is_cuda = is_cuda)
-all_keys = list(tasks_train.keys()) + list(tasks_test.keys())
 
+# Obtain tasks:
+if is_load_data:
+    try:
+        dataset = pickle.load(open(filename + "data.p", "rb"))
+        tasks_train = dataset["tasks_train"]
+        tasks_test = dataset["tasks_test"]
+        print("dataset loaded.")
+    except:
+        print("dataset do not exist. Create one")
+        tasks_train, tasks_test = get_tasks(task_id_list, num_train_tasks, num_test_tasks, task_settings = task_settings, is_cuda = is_cuda)
+        dataset = {"tasks_train": tasks_train, "tasks_test": tasks_test}
+        pickle.dump(dataset, open(filename + "data.p", "wb"))
+else:
+    tasks_train, tasks_test = get_tasks(task_id_list, num_train_tasks, num_test_tasks, task_settings = task_settings, is_cuda = is_cuda)
+    dataset = {"tasks_train": tasks_train, "tasks_test": tasks_test}
+    pickle.dump(dataset, open(filename + "data.p", "wb"))
+    print("dataset saved.")
+
+
+# Setting up recordings:
+all_keys = list(tasks_train.keys()) + list(tasks_test.keys())
 data_record = {"loss": {key: [] for key in all_keys}, "loss_sampled": {key: [] for key in all_keys}, "mse": {key: [] for key in all_keys},
                "reg": {key: [] for key in all_keys}, "KLD": {key: [] for key in all_keys}}
 info_dict = {"array_id": array_id}
@@ -186,6 +210,8 @@ record_data(data_record, [exp_id, tasks_train, tasks_test, task_id_list, task_se
                           struct_param_gen_base, struct_param_pre, struct_param_post, statistics_pooling, activation_gen, activation_model], 
             ["exp_id", "tasks_train", "tasks_test", "task_id_list", "task_settings", "reg_dict", "is_uncertainty_net", "lr", "pre_pooling_neurons", "num_backwards", "batch_size_task",
              "struct_param_gen_base", "struct_param_pre", "struct_param_post", "statistics_pooling", "activation_gen", "activation_model"])
+
+# Training:
 for i in range(num_iter + 1):
     chosen_task_keys = np.random.choice(list(tasks_train.keys()), batch_size_task, replace = False).tolist()
     if optim_mode == "individual":
@@ -332,11 +358,11 @@ for i in range(num_iter + 1):
             print("test statistics vs. z:")
             plot_statistics_vs_z(z_list_test, statistics_list_test)
 
-#             # Plotting individual test data:
-#             print("train tasks:")
-#             plot_individual_tasks(tasks_train, statistics_Net, generative_Net, generative_Net_logstd = generative_Net_logstd, is_VAE = is_VAE, is_regulated_net = is_regulated_net, xlim = task_settings["xlim"])
-#             print("test tasks:")
-#             plot_individual_tasks(tasks_test, statistics_Net, generative_Net, generative_Net_logstd = generative_Net_logstd, is_VAE = is_VAE, is_regulated_net = is_regulated_net, xlim = task_settings["xlim"])
+            # Plotting individual test data:
+            print("train tasks:")
+            plot_individual_tasks(tasks_train, statistics_Net, generative_Net, generative_Net_logstd = generative_Net_logstd, is_VAE = is_VAE, is_regulated_net = is_regulated_net, xlim = task_settings["xlim"])
+            print("test tasks:")
+            plot_individual_tasks(tasks_test, statistics_Net, generative_Net, generative_Net_logstd = generative_Net_logstd, is_VAE = is_VAE, is_regulated_net = is_regulated_net, xlim = task_settings["xlim"])
         print("=" * 50 + "\n\n")
         try:
             sys.stdout.flush()
@@ -344,7 +370,7 @@ for i in range(num_iter + 1):
             pass
     if i % save_interval == 0 or to_stop:
         record_data(info_dict, [master_model.model_dict, i], ["model_dict", "iter"])
-        pickle.dump(info_dict, open(filename + "data.p", "wb"))
+        pickle.dump(info_dict, open(filename + "info.p", "wb"))
     if to_stop:
         print("The training loss stops decreasing for {0} steps. Early stopping at {1}.".format(patience, i))
         break
