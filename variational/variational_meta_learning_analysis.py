@@ -26,45 +26,122 @@ sys.path.append(os.path.join(os.path.dirname("__file__"), '..', '..'))
 from AI_scientist.prepare_dataset import Dataset_Gen
 from AI_scientist.util import plot_matrices, make_dir, get_struct_str, get_args, Early_Stopping, record_data, manifold_embedding, get_args, make_dir, sort_two_lists
 from AI_scientist.settings.filepath import variational_model_PATH
+from AI_scientist.settings.global_param import COLOR_LIST
 from AI_scientist.pytorch.net import Net
 from AI_scientist.variational.variational_meta_learning import Master_Model, Statistics_Net, Generative_Net, load_model_dict
 from AI_scientist.variational.variational_meta_learning import VAE_Loss, sample_Gaussian, clone_net, get_nets, get_tasks, evaluate, get_reg, load_trained_models, get_relevance
 from AI_scientist.variational.variational_meta_learning import plot_task_ensembles, plot_individual_tasks, plot_statistics_vs_z, plot_data_record
+from AI_scientist.variational.variational_meta_learning import plot_few_shot_loss, plot_individual_tasks_bounce
 from AI_scientist.variational.variational_meta_learning import get_latent_model_data, get_polynomial_class, get_Legendre_class, get_master_function
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
 
 
+# In[2]:
+
+
+def parse_dict(filename):
+    filename_split = filename.split("_")
+    data_dict = {}
+    filename_split = filename.split("_")
+    data_dict["input_size"] = filename_split[filename_split.index("input") + 1]
+    data_dict["statistics_output_neurons"] = filename_split[filename_split.index("stat") + 1]
+    data_dict["pre_pooling_neurons"] = filename_split[filename_split.index("pre") + 1]
+    data_dict["num_context_neurons"] = filename_split[filename_split.index("context") + 1]
+    data_dict["statistics_pooling"] = filename_split[filename_split.index("pool") + 1]
+    data_dict["batch_size_task"] = filename_split[filename_split.index("batch") + 1]
+    data_dict["num_backwards"] = filename_split[filename_split.index("back") + 1]
+    data_dict["is_VAE"] = filename_split[filename_split.index("VAE") + 1]
+    data_dict["VAE_beta"] = filename_split[filename_split.index("VAE") + 2]
+    data_dict["lr"] = filename_split[filename_split.index("lr") + 1]
+    data_dict["reg_amp"] = filename_split[filename_split.index("reg") + 1]
+    data_dict["activation_gen"] = filename_split[filename_split.index("actgen") + 1]
+    data_dict["activation_model"] = filename_split[filename_split.index("actmodel") + 1]
+    data_dict["struct_string"] = filename_split[filename_split.index("struct") + 1]
+    data_dict["loss_core"] = filename_split[filename_split.index("core") + 1]
+    if "uncertainty" in filename_split:
+        data_dict["is_uncertainty"] = eval(filename_split[filename_split.index("uncer") + 1])
+    optim_mode = filename_split[filename_split.index("struct") + 2]
+    if optim_mode in ["sum", "indi"]:
+        data_dict["optim_mode"] = optim_mode
+    data_dict["exp_id"] = filename_split[filename_split.index("core") + 2]
+    data_dict["filename"] = filename
+    return data_dict
+
+
+# ## Obtain testing tasks:
+
 # In[ ]:
 
 
 exp_id = "May2"
 filename = "Net_['master_tanh']_input_1_(100,100)_statistics-neurons_4_pre_100_pooling_max_context_0_batch_100_backward_1_VAE_False_0.2_uncertainty_False_lr_5e-05_reg_1e-06_actgen_leakyRelu_actmodel_leakyRelu_struct_60Si-60Si-60Si_individual_core_huber_test2_info"
-filename = variational_model_PATH + "/trained_models/{0}_good/".format(exp_id) + filename
+
+exp_id = "May3"
+filename = "Net_('bounce-states',)_input_6_(100,50)_stat_8_pre_400_pool_max_context_0_hid_(40, 40)_batch_100_back_1_VAE_False_0.2_uncer_False_lr_5e-05_reg_1e-06_actgen_leakyRelu_actmodel_leakyRelu_struct_60Si-60Si-60Si_indi_core_huber_May3_info"
+
+dirname = variational_model_PATH + "/trained_models/{0}_good/".format(exp_id)
+filename = dirname + filename
 is_model_dict = True
 if is_model_dict:
     info_dict = pickle.load(open(filename + ".p", "rb"))
     master_model = load_model_dict(info_dict["model_dict"][-1])
-    statistics_Net = master_model.statistics_Net
-    generative_Net = master_model.generative_Net
     data_record = info_dict["data_record"]
 else:
     statistics_Net, generative_Net, data_record = load_trained_models(filename)
 
 filename_split = filename.split("_")
-task_id_list = eval("_".join(filename_split[filename_split.index('good/Net') + 1: filename_split.index("input")]))
+task_id_list = eval("_".join(filename_split[filename_split.index('good/Net'.format(exp_id)) + 1: filename_split.index("input")]))
 task_settings = data_record["task_settings"][0]
 print("task_settings:\n", task_settings)
 is_VAE = eval(filename_split[filename_split.index("VAE") + 1])
 is_uncertainty_net = eval(filename_split[filename_split.index("uncertainty") + 1]) if "uncertainty" in filename_split else False
-num_test_tasks = 1000
+num_test_tasks = 100
 task_settings["num_examples"] = 2000
-task_settings["test_size"] = 0.95
+task_settings["test_size"] = 0.2
 tasks_train, tasks_test = get_tasks(task_id_list, 1, num_test_tasks, task_settings = task_settings)
-plot_types = ["standard"]
-#     plot_types = ["gradient"]
-plot_types = ["slider"]
+
+
+# ## General performance:
+
+# In[ ]:
+
+
+# See the general performance of all
+data_dict_list = []
+for filename in os.listdir(dirname):
+    if "info" not in filename:
+        continue
+    info_dict = pickle.load(open(dirname + filename, "rb"))
+    data_dict = parse_dict(filename)
+    master_model = load_model_dict(info_dict["model_dict"][-1])
+    print("\n{0}".format(filename))
+    
+    data_dict["mse_few_shot"] = plot_few_shot_loss(master_model, tasks_test)
+    plot_data_record(info_dict["data_record"], is_VAE = is_VAE)
+    data_dict["mean_last"] = np.mean(data_record['mse_mean_test'][-6:-1])
+    data_dict["median_last"] = np.mean(data_record['mse_median_test'][-6:-1])
+    data_dict["mean_min"] = np.min(data_record['mse_mean_test'])
+    data_dict["median_min"] = np.min(data_record['mse_median_test'])
+    statistics_list_test, z_list_test = plot_task_ensembles(tasks_test, master_model.statistics_Net, master_model.generative_Net, is_VAE = is_VAE, title = "y_pred_test vs. y_test")
+    print("test statistics vs. z:")
+    data_dict["corr_info"] = plot_statistics_vs_z(z_list_test, statistics_list_test)
+    if "bounce" in task_id_list[0]:
+        plot_individual_tasks_bounce(tasks_test, num_examples_show = 40, num_tasks_show = 9, master_model = master_model, num_shots = 200)
+    else:
+        _ = plot_individual_tasks(tasks_test, master_model.statistics_Net, master_model.generative_Net, is_VAE = is_VAE, xlim = task_settings["xlim"])
+    data_dict_list.append(data_dict)
+
+
+# ## Three different analysis:
+
+# In[ ]:
+
+
+# plot_types = ["standard"]
+plot_types = ["gradient"]
+# plot_types = ["slider"]
 
 for plot_type in plot_types:
     if plot_type == "standard":
@@ -81,16 +158,16 @@ for plot_type in plot_types:
         print("sample_task_id: {0}".format(sample_task_id))
         ((X_train, y_train), (X_test, y_test)), _ = tasks_test[sample_task_id]
         epochs_statistics = 50
-        lr_statistics = 5e-3
-        optim_type_statistics = "LBFGS"
+        lr_statistics = 1e-3
+        optim_type_statistics = "adam"
 
         # epochs = 50
         # lr = 1e-3
         # optimizer = "adam"
 
         epochs = 50
-        lr = 5e-3
-        optim_type = "LBFGS"
+        lr = 1e-3
+        optim_type = "adam"
 
         master_model.get_statistics(X_train, y_train)
         y_pred = master_model(X_test)
@@ -288,6 +365,8 @@ for plot_type in plot_types:
 
         plt.show()
 
+
+# ## Interpretability, active learning:
 
 # In[3]:
 

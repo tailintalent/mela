@@ -887,6 +887,8 @@ def plot_individual_tasks_bounce(tasks, num_examples_show = 40, num_tasks_show =
                 if is_cuda:
                     idx = idx.cuda()
                 statistics = master_model.statistics_Net.forward_inputs(X_train[idx], y_train[idx])
+            if isinstance(statistics, tuple):
+                statistics = statistics[0]
             y_pred = master_model.generative_Net(X_test, statistics)
             y_pred_numpy = y_pred.cpu() if is_cuda else y_pred
             y_pred_numpy = y_pred_numpy.data.numpy().reshape(-1, 1, 2)
@@ -908,8 +910,6 @@ def plot_individual_tasks_bounce(tasks, num_examples_show = 40, num_tasks_show =
 
 
 def plot_few_shot_loss(master_model, tasks, isplot = True):
-    import matplotlib.pylab as plt
-    plt.figure(figsize = (8,6))
     num_shots_list = [20, 30, 40, 50, 70, 100, 200, 300, 500, 1000]
     mse_list_whole = []
     for task_key, task in tasks.items():
@@ -923,6 +923,8 @@ def plot_few_shot_loss(master_model, tasks, isplot = True):
             X_few_shot = X_train[idx]
             y_few_shot = y_train[idx]
             statistics = master_model.statistics_Net.forward_inputs(X_few_shot, y_few_shot)
+            if isinstance(statistics, tuple):
+                statistics = statistics[0]
             y_test_pred = master_model.generative_Net(X_test, statistics)
             mse_list.append(nn.MSELoss()(y_test_pred, y_test).data[0])
         mse_list_whole.append(mse_list)
@@ -930,6 +932,8 @@ def plot_few_shot_loss(master_model, tasks, isplot = True):
     mse_mean = mse_list_whole.mean(0)
     mse_std = mse_list_whole.std(0)
     if isplot:
+        import matplotlib.pylab as plt
+        plt.figure(figsize = (8,6))
         plt.errorbar(num_shots_list, mse_mean, mse_std, fmt = "o")
         ax = plt.gca()
         ax.set_xscale("log")
@@ -937,6 +941,7 @@ def plot_few_shot_loss(master_model, tasks, isplot = True):
         ax.set_ylabel("mse")
         plt.show()
 
+        plt.figure(figsize = (8,6))
         plt.errorbar(num_shots_list, mse_mean, mse_std, fmt = "o")
         ax = plt.gca()
         ax.set_xscale("log")
@@ -977,16 +982,22 @@ def plot_statistics_vs_z(z_list, statistics_list, mode = "corrcoef", title = Non
     plt.show()
     
     # Plot coefficient for linear regression:
+    info = {}
     if mode == "corrcoef":
         print("statistics (row) vs. z (column) pearsonr correlation coefficient (abs value):")
-        corrcoef = get_corrcoef(z_list, statistics_list)
+        cross_corrcoef = get_corrcoef(z_list, statistics_list)
         plot_matrices([np.abs(corrcoef)], title = title)
         print("statistics correlation matrix:")
-        plot_matrices([np.abs(np.corrcoef(statistics_list, rowvar = False))])
+        self_corrcoef = np.corrcoef(statistics_list, rowvar = False)
+        plot_matrices([np.abs(self_corrcoef)])
         print("pca explained variance ratio:")
         pca = PCA()
         pca.fit(statistics_list)
         print(pca.explained_variance_ratio_)
+        
+        info["cross_corrcoef"] = cross_corrcoef
+        info["self_corrcoef"] = self_corrcoef
+        info["explained_variance_ratio"] = pca.explained_variance_ratio_     
     else:
         print("statistics (row) vs. z (column) linear regression abs(coeff):")
         from sklearn import linear_model
@@ -997,6 +1008,8 @@ def plot_statistics_vs_z(z_list, statistics_list, mode = "corrcoef", title = Non
             coeff_list.append(reg.coef_)
         coeff_list = np.array(coeff_list)
         plot_matrices([np.abs(coeff_list)])
+        info["coeff_list"] = coeff_list
+    return info
 
 
 def plot_data_record(data_record, idx = None, is_VAE = False):
