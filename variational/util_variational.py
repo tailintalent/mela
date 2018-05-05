@@ -46,6 +46,7 @@ def get_task(
     time_steps = 3,
     forward_steps = 1,
     is_flatten = True,
+    output_dims = None,
     isTorch = True,
     is_cuda = False,
     width = None,
@@ -59,17 +60,26 @@ def get_task(
     reflect = []
     if obs_array is not None:
         obs_array = obs_array.squeeze()
+        obs_array = obs_array
         obs_X = []
         obs_y = []
-    for i in range(len(trajectory) - time_steps - forward_steps + 1):
+    
+    # Configure forward steps:
+    if not isinstance(forward_steps, list) and not isinstance(forward_steps, tuple):
+        forward_steps = [forward_steps]
+    forward_steps = list(forward_steps)
+    assert min(forward_steps) == 1
+    max_forward_steps = max(forward_steps)
+
+    for i in range(len(trajectory) - time_steps - max_forward_steps + 1):
         X.append(trajectory[i: i + time_steps])
-        y.append(trajectory[i + time_steps + forward_steps - 1: i + time_steps + forward_steps])
-        reflect.append(np.any(bouncing_list[i + 1: i + time_steps + forward_steps]).astype(int))
+        y.append(trajectory[i + time_steps + np.array(forward_steps) - 1])
+        reflect.append(np.any(bouncing_list[i + 1: i + time_steps + max_forward_steps]).astype(int))
         if obs_array is not None:
             obs_X.append(obs_array[i: i + time_steps])
-            obs_y.append(obs_array[i + time_steps + forward_steps - 1: i + time_steps + forward_steps])
-        if forward_steps > 1:
-            others.append(trajectory[i + time_steps : i + time_steps + forward_steps - 1])
+            obs_y.append(obs_array[i + time_steps + np.array(forward_steps) - 1])
+        if max_forward_steps > 1:
+            others.append(trajectory[i + time_steps : i + time_steps + max_forward_steps - 1])
         else:
             others.append([1])
     X = np.array(X)
@@ -79,10 +89,6 @@ def get_task(
     if obs_array is not None:
         obs_X = np.array(obs_X)
         obs_y = np.array(obs_y)
-    if is_flatten:
-        X = X.reshape(X.shape[0], -1)
-        y = y.reshape(y.shape[0], -1)
-        others = others.reshape(others.shape[0], -1)
 
     # Delete entries with NaN (indicating new game):
     valid_X = ~np.isnan(X.reshape(X.shape[0], -1).sum(1))
@@ -95,6 +101,23 @@ def get_task(
     if obs_array is not None:
         obs_X = obs_X[valid]
         obs_y = obs_y[valid]
+        
+        max_value = max(obs_X.max(), obs_y.max())
+        obs_X = obs_X / max_value
+        obs_y = obs_y / max_value
+    
+    if output_dims is not None:
+        if not isinstance(output_dims, list) and not isinstance(output_dims, tuple):
+            output_dims = [output_dims]
+        output_dims = torch.LongTensor(np.array(output_dims))
+        if is_cuda:
+            output_dims = output_dims.cuda()
+        y = y[..., output_dims]
+
+    if is_flatten and obs_array is None:
+        X = X.reshape(X.shape[0], -1)
+        y = y.reshape(y.shape[0], -1)
+        others = others.reshape(others.shape[0], -1)
 
     X_train, X_test, y_train, y_test, reflected_train, reflected_test = train_test_split(X, y, reflect, test_size = test_size)
     if obs_array is not None:
@@ -138,7 +161,7 @@ def get_env_data(
     env_name,
     data_format = "states",
     input_dims = 1,
-    output_dims = 0,
+    output_dims = None,
     ball_idx = 0,
     num_examples = 10000,
     test_size = 0.2,
@@ -181,10 +204,7 @@ def get_env_data(
         time_steps = kwargs["time_steps"] if "time_steps" in kwargs else 3
         forward_steps = kwargs["forward_steps"] if "forward_steps" in kwargs else 1
         episode_length = kwargs["episode_length"] if "episode_length" in kwargs else 100
-        is_flatten = kwargs["is_flatten"] if "is_flatten" in kwargs else True
-        max_range = kwargs["max_range"] if "max_range" in kwargs else None
-        if max_range is not None:
-            value_min, value_max = max_range
+        is_flatten = kwargs["is_flatten"] if "is_flatten" in kwargs else False
         env_name_split = env_name.split("-")
         if "nobounce" in env_name_split:
             env_name_core = "-".join(env_name_split[:-1])
@@ -193,6 +213,9 @@ def get_env_data(
         env_settings = {key: random.choice(value) if isinstance(value, list) else value for key, value in ENV_SETTINGS_CHOICE[env_name_core].items()}
         env_settings["info_contents"] = ["coordinates"]
         max_distance = env_settings["max_distance"] if "max_distance" in env_settings else None
+        max_range = env_settings["max_range"] if "max_range" in env_settings else None
+        if max_range is not None:
+            value_min, value_max = max_range
         input_dims = env_settings["input_dims"] if "input_dims" in env_settings else input_dims
 
         # Reset certain aspects of the environment:
@@ -281,18 +304,11 @@ def get_env_data(
                      time_steps = time_steps,
                      forward_steps = forward_steps,
                      is_flatten = is_flatten,
+                     output_dims = output_dims,
                      is_cuda = is_cuda,
                      width = width,
                      test_size = test_size
                     )
-        if output_dims is not None and data_format == "states":
-            if not isinstance(output_dims, list) and not isinstance(output_dims, tuple):
-                output_dims = [output_dims]
-            output_dims = torch.LongTensor(np.array(output_dims))
-            if is_cuda:
-                output_dims = output_dims.cuda()
-            y_train = y_train[:, output_dims]
-            y_test = y_test[:, output_dims]
 
         if "nobounce" in env_name_split:
             if obs_array is None:

@@ -9,10 +9,11 @@ ENV_SETTINGS_CHOICE = {"envBounceBase": {
 								 "ball_radius": 2,
 								 "ball_vmax": 4,
 								 "num_paddles": 0,
-								 "screen_height": 40,
-						    	 "screen_width": 40,
-						    	 "step_dt": 0.5,
-						    	 "dt": 0.5,
+								 "screen_height": 39,
+								 "screen_width": 39,
+								 "max_range": (0,40),
+								 "step_dt": 0.5,
+								 "dt": 0.02,
 								}
 					  }
 ENV_SETTINGS_CHOICE["envBounceStates"] = new_dict(ENV_SETTINGS_CHOICE["envBounceBase"],
@@ -24,11 +25,11 @@ ENV_SETTINGS_CHOICE["envBounce1"] = new_dict(ENV_SETTINGS_CHOICE["envBounceState
 										 {"boundaries": [[(4, 1), (15, 1), (29, 14), (20, 28), (1, 23)]],
 										 })
 ENV_SETTINGS_CHOICE["envBounce2"] = new_dict(ENV_SETTINGS_CHOICE["envBounceStates"],
-										 {"boundaries": [[(2, 2), (15, 4), (38, 10), (36, 38), (10, 35)]],
+										 {"boundaries": [[(2, 2), (15, 4), (37, 10), (36, 37), (10, 35)]],
 										 })
 ENV_SETTINGS_CHOICE["envBounce3"] = new_dict(ENV_SETTINGS_CHOICE["envBounceStates"],
-										 {"boundaries": [[(3, 5), (38, 3), (37, 34), (16, 38), (3, 35)]],
+										 {"boundaries": [[(3, 5), (37, 3), (37, 34), (16, 37), (3, 34)]],
 										 })
 ENV_SETTINGS_CHOICE["envBounce4"] = new_dict(ENV_SETTINGS_CHOICE["envBounceStates"],
-										 {"boundaries": [[(3, 10), (18, 3), (36, 3), (38, 37), (4, 35)]],
+										 {"boundaries": [[(3, 10), (18, 3), (35, 3), (38, 36), (4, 34)]],
 										 })

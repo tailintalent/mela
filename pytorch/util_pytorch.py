@@ -540,6 +540,8 @@ def get_activation(activation):
         f = F.relu
     elif activation == "leakyRelu":
         f = nn.LeakyReLU(negative_slope = 0.3)
+    elif activation == "leakyReluFlat":
+        f = nn.LeakyReLU(negative_slope = 0.01)
     elif activation == "tanh":
         f = F.tanh
     elif activation == "softplus":

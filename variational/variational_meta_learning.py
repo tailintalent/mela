@@ -877,8 +877,9 @@ def plot_individual_tasks_bounce(tasks, num_examples_show = 40, num_tasks_show =
         is_cuda = X_train.is_cuda
         X_test_numpy = X_test.cpu() if is_cuda else X_test
         y_test_numpy = y_test.cpu() if is_cuda else y_test
-        X_test_numpy = X_test_numpy.data.numpy().reshape(-1, num_steps, 2)
-        y_test_numpy = y_test_numpy.data.numpy().reshape(-1, 1, 2)
+        if len(X_test_numpy.size()) == 2:
+            X_test_numpy = X_test_numpy.data.numpy().reshape(-1, num_steps, 2)
+            y_test_numpy = y_test_numpy.data.numpy().reshape(-1, int(y_test_numpy.size(1) / 2), 2)
         if master_model is not None:
             if num_shots is None:
                 statistics = master_model.statistics_Net.forward_inputs(X_train, y_train)
@@ -891,7 +892,8 @@ def plot_individual_tasks_bounce(tasks, num_examples_show = 40, num_tasks_show =
                 statistics = statistics[0]
             y_pred = master_model.generative_Net(X_test, statistics)
             y_pred_numpy = y_pred.cpu() if is_cuda else y_pred
-            y_pred_numpy = y_pred_numpy.data.numpy().reshape(-1, 1, 2)
+            if len(y_pred_numpy.size()) == 2:
+                y_pred_numpy = y_pred_numpy.data.numpy().reshape(-1, int(y_pred_numpy.size(1) / 2), 2)
         
         ax = fig.add_subplot(int(np.ceil(num_tasks_show / float(3))), 3, k + 1)
         for i in range(len(X_test_numpy)):
@@ -899,13 +901,13 @@ def plot_individual_tasks_bounce(tasks, num_examples_show = 40, num_tasks_show =
                 break
             x_ele = X_test_numpy[i]
             y_ele = y_test_numpy[i]
-            ax.plot(np.concatenate((x_ele[:,0], y_ele[:,0])), np.concatenate((x_ele[:,1], y_ele[:,1])), ".-", color = COLOR_LIST[i % len(COLOR_LIST)])
-            ax.plot([y_ele[0,0]], [y_ele[0,1]], "o", color = "r")
+            ax.plot(np.concatenate((x_ele[:,0], y_ele[:,0])), np.concatenate((x_ele[:,1], y_ele[:,1])), ".-", color = COLOR_LIST[i % len(COLOR_LIST)], zorder = -1)
+            ax.scatter(y_ele[:,0], y_ele[:,1], s = np.linspace(10, 20, len(y_ele[:,0])), marker = "o", color = "r", zorder = 2)
             ax.set_title(task_key)
             if master_model is not None:
                 y_pred_ele = y_pred_numpy[i]
-                ax.plot(np.concatenate((x_ele[:,0], y_pred_ele[:,0])), np.concatenate((x_ele[:,1], y_pred_ele[:,1])), ".--", color = COLOR_LIST[i % len(COLOR_LIST)])
-                ax.plot([y_pred_ele[0,0]], [y_pred_ele[0, 1]], "o", color = "b")
+                ax.plot(np.concatenate((x_ele[:,0], y_pred_ele[:,0])), np.concatenate((x_ele[:,1], y_pred_ele[:,1])), ".--", color = COLOR_LIST[i % len(COLOR_LIST)], zorder = -1)
+                ax.scatter(y_pred_ele[:,0], y_pred_ele[:,1], s = np.linspace(10, 20, len(y_ele[:,0])), marker = "o", color = "b", zorder = 2)
     plt.show()
 
 
@@ -1266,9 +1268,8 @@ def get_bouncing_states(settings, num_examples, data_format = "states", is_cuda 
             episode_length = 200,
             boundaries = boundaries,
             render = render,
-            is_flatten = True,
-            max_range = (0, screen_size),
             verbose = True,
+            **kwargs
         )
     if is_cuda:
         X_train = X_train.cuda()
