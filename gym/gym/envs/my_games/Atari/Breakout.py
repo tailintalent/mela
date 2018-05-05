@@ -197,6 +197,13 @@ class Ball(PhysicalObject):
                 x_range = range(max(0, np.ceil(self.x - self.radius).astype(int)), int(min(screen_width, np.floor(self.x + self.radius + 1))))
                 y_range = range(max(0, np.ceil(self.y - self.radius).astype(int)), int(min(screen_height, np.floor(self.y + self.radius + 1))))
                 idx = np.array(np.meshgrid(y_range, x_range)).transpose([2,1,0]).reshape(-1, 2)
+            elif self.shape == "circle":
+                x_range = range(max(0, np.ceil(self.x - self.radius).astype(int)), int(min(screen_width, np.floor(self.x + self.radius + 1))))
+                y_range = range(max(0, np.ceil(self.y - self.radius).astype(int)), int(min(screen_height, np.floor(self.y + self.radius + 1))))
+                idx = np.array(np.meshgrid(y_range, x_range)).transpose([2,1,0]).reshape(-1, 2)
+                center = np.array([np.floor(self.y) + 0.5, np.floor(self.x) + 0.5]) 
+                distance = ((idx - center) ** 2).sum(1)
+                idx = idx[distance <= max(self.radius ** 2 - 1, 1)]
             elif self.shape == "square_hollow":
                 x_min = max(0, np.ceil(self.x - self.radius).astype(int))
                 x_max = int(min(screen_width, np.floor(self.x + self.radius)))
