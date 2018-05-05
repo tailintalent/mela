@@ -877,9 +877,11 @@ def plot_individual_tasks_bounce(tasks, num_examples_show = 40, num_tasks_show =
         is_cuda = X_train.is_cuda
         X_test_numpy = X_test.cpu() if is_cuda else X_test
         y_test_numpy = y_test.cpu() if is_cuda else y_test
-        if len(X_test_numpy.size()) == 2:
-            X_test_numpy = X_test_numpy.data.numpy().reshape(-1, num_steps, 2)
-            y_test_numpy = y_test_numpy.data.numpy().reshape(-1, int(y_test_numpy.size(1) / 2), 2)
+        X_test_numpy = X_test_numpy.data.numpy()
+        y_test_numpy = y_test_numpy.data.numpy()
+        if len(X_test_numpy.shape) == 2:
+            X_test_numpy = X_test_numpy.reshape(-1, num_steps, 2)
+            y_test_numpy = y_test_numpy.reshape(-1, int(y_test_numpy.shape[1] / 2), 2)
         if master_model is not None:
             if num_shots is None:
                 statistics = master_model.statistics_Net.forward_inputs(X_train, y_train)
@@ -892,8 +894,9 @@ def plot_individual_tasks_bounce(tasks, num_examples_show = 40, num_tasks_show =
                 statistics = statistics[0]
             y_pred = master_model.generative_Net(X_test, statistics)
             y_pred_numpy = y_pred.cpu() if is_cuda else y_pred
-            if len(y_pred_numpy.size()) == 2:
-                y_pred_numpy = y_pred_numpy.data.numpy().reshape(-1, int(y_pred_numpy.size(1) / 2), 2)
+            y_pred_numpy = y_pred_numpy.data.numpy()
+            if len(y_pred_numpy.shape) == 2:
+                y_pred_numpy = y_pred_numpy.reshape(-1, int(y_pred_numpy.shape[1] / 2), 2)
         
         ax = fig.add_subplot(int(np.ceil(num_tasks_show / float(3))), 3, k + 1)
         for i in range(len(X_test_numpy)):
@@ -1267,7 +1270,6 @@ def get_bouncing_states(settings, num_examples, data_format = "states", is_cuda 
             output_dims = (0,1),
             episode_length = 200,
             boundaries = boundaries,
-            render = render,
             verbose = True,
             **kwargs
         )

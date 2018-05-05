@@ -167,7 +167,6 @@ def get_env_data(
     test_size = 0.2,
     is_cuda = False,
     isplot = 1,
-    render = False,
     verbose = True,
     **kwargs
     ):
@@ -205,6 +204,7 @@ def get_env_data(
         forward_steps = kwargs["forward_steps"] if "forward_steps" in kwargs else 1
         episode_length = kwargs["episode_length"] if "episode_length" in kwargs else 100
         is_flatten = kwargs["is_flatten"] if "is_flatten" in kwargs else False
+        render = kwargs["render"] if "render" in kwargs else False
         env_name_split = env_name.split("-")
         if "nobounce" in env_name_split:
             env_name_core = "-".join(env_name_split[:-1])
