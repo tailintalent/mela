@@ -802,7 +802,7 @@ def evaluate(task, statistics_Net, generative_Net, generative_Net_logstd = None,
         return loss.data[0], loss.data[0], mse.data[0], 0
 
 
-def get_reg(reg_dict, statistics_Net = None, generative_Net = None, autoencoder = None, is_cuda = False):
+def get_reg(reg_dict, statistics_Net = None, generative_Net = None, autoencoder = None, net = None, is_cuda = False):
     reg = Variable(torch.FloatTensor([0]), requires_grad = False)
     if is_cuda:
         reg = reg.cuda()
@@ -813,6 +813,8 @@ def get_reg(reg_dict, statistics_Net = None, generative_Net = None, autoencoder 
             reg_net = generative_Net
         elif net_name == "autoencoder":
             reg_net = autoencoder
+        elif net_name == "net":
+            reg_net = net
         if isinstance(reg_net, nn.DataParallel):
             reg_net = reg_net.module
         if reg_net is not None:
@@ -979,7 +981,7 @@ def plot_individual_tasks(tasks, statistics_Net, generative_Net, generative_Net_
     return [statistics_list]
 
 
-def plot_individual_tasks_bounce(tasks, num_examples_show = 40, num_tasks_show = 6, master_model = None, autoencoder = None, num_shots = None, **kwargs):
+def plot_individual_tasks_bounce(tasks, num_examples_show = 40, num_tasks_show = 6, master_model = None, model = None, autoencoder = None, num_shots = None, **kwargs):
     import matplotlib.pylab as plt
     fig = plt.figure(figsize = (25, num_tasks_show / 3 * 8))
     plt.subplots_adjust(hspace = 0.4)
@@ -1021,6 +1023,13 @@ def plot_individual_tasks_bounce(tasks, num_examples_show = 40, num_tasks_show =
             y_pred_numpy = y_pred_numpy.data.numpy()
             if len(y_pred_numpy.shape) == 2:
                 y_pred_numpy = y_pred_numpy.reshape(-1, int(y_pred_numpy.shape[1] / 2), 2)
+        else:
+            if model is not None:
+                y_pred = model(X_test)
+                y_pred_numpy = y_pred.cpu() if is_cuda else y_pred
+                y_pred_numpy = y_pred_numpy.data.numpy()
+                if len(y_pred_numpy.shape) == 2:
+                    y_pred_numpy = y_pred_numpy.reshape(-1, int(y_pred_numpy.shape[1] / 2), 2)
         
         ax = fig.add_subplot(int(np.ceil(num_tasks_show / float(3))), 3, k + 1)
         for i in range(len(X_test_numpy)):
@@ -1031,7 +1040,7 @@ def plot_individual_tasks_bounce(tasks, num_examples_show = 40, num_tasks_show =
             ax.plot(np.concatenate((x_ele[:,0], y_ele[:,0])), np.concatenate((x_ele[:,1], y_ele[:,1])), ".-", color = COLOR_LIST[i % len(COLOR_LIST)], zorder = -1)
             ax.scatter(y_ele[:,0], y_ele[:,1], s = np.linspace(10, 20, len(y_ele[:,0])), marker = "o", color = "r", zorder = 2)
             ax.set_title(task_key)
-            if master_model is not None:
+            if master_model is not None or model is not None:
                 y_pred_ele = y_pred_numpy[i]
                 ax.plot(np.concatenate((x_ele[:,0], y_pred_ele[:,0])), np.concatenate((x_ele[:,1], y_pred_ele[:,1])), ".--", color = COLOR_LIST[i % len(COLOR_LIST)], zorder = -1)
                 ax.scatter(y_pred_ele[:,0], y_pred_ele[:,1], s = np.linspace(10, 20, len(y_ele[:,0])), marker = "o", color = "b", zorder = 2)
