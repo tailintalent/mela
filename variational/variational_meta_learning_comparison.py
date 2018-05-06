@@ -140,11 +140,13 @@ make_dir(filename)
 print(filename)
 
 
-
 # Obtain nets:
+struct_param = [[num_neurons, "Simple_Layer", {}] for num_neurons in main_hidden_neurons]
+struct_param.append([output_size, "Simple_Layer", {"activation": "linear"}])
 net = Net(input_size = input_size,
-          struct_param = [[num_neurons, "Simple_Layer", {}] for num_neurons in list(main_hidden_neurons) + [output_size]],
+          struct_param = struct_param,
           settings = {"activation": activation_model},
+          is_cuda = is_cuda,
          )
 
 # Setting up optimizer and loss functions:

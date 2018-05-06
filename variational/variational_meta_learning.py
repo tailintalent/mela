@@ -276,7 +276,7 @@ class Generative_Net(nn.Module):
         settings_generative = {"activation": "leakyRelu"}, 
         settings_model = {"activation": "leakyRelu"}, 
         learnable_latent_param = False,
-        last_layer_linear = False,
+        last_layer_linear = True,
         is_cuda = False,
         ):
         super(Generative_Net, self).__init__()
