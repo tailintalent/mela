@@ -487,6 +487,82 @@ class VAE_Loss(nn.Module):
         else:
             raise Exception("prior {0} not recognized!".format(self.prior))
         return reconstuction_loss, KLD * self.beta
+  
+
+
+def forward(model, X):
+    """General function for applying the same model at multiple time steps"""
+    output_list = []
+    for i in range(X.size(1)):
+        output = model(X[:,i:i+1,...])
+        if isinstance(output, tuple):
+            output = output[0]
+        output_list.append(output)
+    output_seq = torch.cat(output_list, 1)
+    return output_seq
+
+
+def get_forward_pred(predictor, latent, forward_steps):
+    """Applying the same model to roll out several time steps"""
+    max_forward_steps = max(forward_steps)
+
+    current_latent = latent
+    pred_list = []
+    for i in range(1, max_forward_steps + 1):
+        current_pred = predictor(current_latent)
+        pred_list.append(current_pred)
+        current_latent = torch.cat([current_latent[:,1:], current_pred], 1)
+    pred_list = torch.cat(pred_list, 1)
+    pred_list = pred_list.view(pred_list.size(0), -1, 2)
+    forward_steps_idx = torch.LongTensor(np.array(forward_steps) - 1).cuda()
+    return pred_list[:, forward_steps_idx]
+
+
+def get_autoencoder_losses(conv_encoder, predictor, X_motion, y_motion, forward_steps):
+    """Getting autoencoder loss"""
+    latent = forward(conv_encoder.encode, X_motion).view(X_motion.size(0), -1, 2)
+    latent_pred = get_forward_pred(predictor, latent, forward_steps = forward_steps)
+    
+    pred_recons = forward(conv_encoder.decode, latent_pred)
+    recons = forward(conv_encoder.decode, latent)
+    loss_auxiliary = nn.MSELoss()(recons, X_motion)
+    forward_steps_idx = torch.LongTensor(np.array(forward_steps) - 1).cuda()
+    y_motion = y_motion[:, forward_steps_idx]
+    loss_pred_recons = nn.MSELoss()(pred_recons, y_motion)
+    return loss_auxiliary, loss_pred_recons, pred_recons
+
+
+def get_rollout_pred_loss(conv_encoder, predictor, X_motion, y_motion, max_step, isplot = True):
+    """Getting the loss for multiple forward steps"""
+    step_list = []
+    loss_step_list = []
+    for i in range(1, max_step + 1):
+        _, loss_pred_recons, _ = get_losses(conv_encoder, predictor, X_motion, y_motion, forward_steps = [i])
+        step_list.append(i)
+        loss_step_list.append(loss_pred_recons.data[0])
+    if isplot:
+        plt.plot(step_list, loss_step_list)
+        plt.show()
+    return step_list, loss_step_list
+
+
+class Loss_with_autoencoder(nn.Module):
+    def __init__(self, core, forward_steps, aux_coeff = 0.5):
+        super(Loss_with_autoencoder, self).__init__()
+        self.core = core
+        self.aux_coeff = aux_coeff
+        self.loss_fun = get_criterion(self.core)
+        self.forward_steps_idx = torch.LongTensor(np.array(forward_steps) - 1).cuda()
+    
+    def forward(self, X_latent, y_latent_pred, X_train_obs, y_train_obs, autoencoder, loss_fun = None):
+        X_latent = X_latent.view(X_latent.size(0), -1, 2)
+        recons = forward(autoencoder.decode, X_latent)
+        pred_recons = forward(autoencoder.decode, y_latent_pred)
+        if loss_fun is None:
+            loss_fun = self.loss_fun
+        loss_auxilliary = loss_fun(recons, X_train_obs)
+        loss_pred = loss_fun(pred_recons, y_train_obs[:, self.forward_steps_idx])
+        return loss_pred + loss_auxilliary * self.aux_coeff
 
 
 def get_relevance(X, y, statistics_Net):
@@ -667,8 +743,17 @@ def get_tasks(task_id_list, num_train, num_test, task_settings = {}, is_cuda = F
     return tasks_train, tasks_test
 
 
-def evaluate(task, statistics_Net, generative_Net, generative_Net_logstd = None, criterion = None, is_VAE = False, is_regulated_net = False):
-    ((X_train, y_train), (X_test, y_test)), _ = task
+def evaluate(task, statistics_Net, generative_Net, generative_Net_logstd = None, criterion = None, is_VAE = False, is_regulated_net = False, autoencoder = None, **kwargs):
+    if autoencoder is not None:
+        forward_steps = kwargs["forward_steps"]
+        forward_steps_idx = torch.LongTensor(np.array(forward_steps) - 1).cuda()
+        ((X_train_obs, y_train_obs), (X_test_obs, y_test_obs)), _ = task
+        X_train = forward(autoencoder.encode, X_train_obs)
+        y_train = forward(autoencoder.encode, y_train_obs[:, forward_steps_idx])
+        X_test = forward(autoencoder.encode, X_test_obs)
+        y_test = forward(autoencoder.encode, y_test_obs[:, forward_steps_idx])
+    else:
+        ((X_train, y_train), (X_test, y_test)), _ = task
     loss_fun = Loss_Fun(core = "mse")
     if is_VAE:
         statistics_mu, statistics_logvar = statistics_Net(torch.cat([X_train, y_train], 1))
@@ -685,9 +770,15 @@ def evaluate(task, statistics_Net, generative_Net, generative_Net_logstd = None,
             statistics = statistics_Net(torch.cat([X_train, y_train], 1))
             if is_regulated_net:
                 statistics = get_regulated_statistics(generative_Net, statistics)
-            y_pred = generative_Net(X_test, statistics)
-            loss = criterion(y_pred, y_test)
-            mse = loss_fun(y_pred, y_test)
+            if autoencoder is not None:
+                generative_Net.set_latent_param(statistics)
+                y_pred = get_forward_pred(generative_Net, X_train, forward_steps)
+                loss = criterion(X_train, y_pred, X_train_obs, y_train_obs, autoencoder)
+                mse = criterion(X_train, y_pred, X_train_obs, y_train_obs, autoencoder, loss_fun = loss_fun)
+            else:
+                y_pred = generative_Net(X_test, statistics)
+                loss = criterion(y_pred, y_test)
+                mse = loss_fun(y_pred, y_test)
         else:
             statistics_mu, statistics_logvar = statistics_Net(torch.cat([X_train, y_train], 1))
             if is_regulated_net:
@@ -732,12 +823,19 @@ def load_trained_models(filename):
     return statistics_Net, generative_Net, data_record
 
 
-def plot_task_ensembles(tasks, statistics_Net, generative_Net, is_VAE = False, is_regulated_net = False, title = None, isplot = True):
+def plot_task_ensembles(tasks, statistics_Net, generative_Net, is_VAE = False, is_regulated_net = False, autoencoder = None, title = None, isplot = True, **kwargs):
     import matplotlib.pyplot as plt
     statistics_list = []
     z_list = []
     for task_key, task in tasks.items():
-        (_, (X_test, y_test)), info = task 
+        if autoencoder is not None:
+            forward_steps = kwargs["forward_steps"]
+            forward_steps_idx = torch.LongTensor(np.array(forward_steps) - 1).cuda()
+            (_, (X_test_obs, y_test_obs)), info = task
+            X_test = forward(autoencoder.encode, X_test_obs)
+            y_test = forward(autoencoder.encode, y_test_obs[:, forward_steps_idx])
+        else:
+            (_, (X_test, y_test)), info = task 
         if is_VAE:
             statistics_mu, statistics_logvar = statistics_Net(torch.cat([X_test, y_test], 1))
             statistics = sample_Gaussian(statistics_mu, statistics_logvar)
@@ -840,7 +938,6 @@ def plot_individual_tasks(tasks, statistics_Net, generative_Net, generative_Net_
             y_pred_list = np.concatenate(y_pred_list, 1)
             y_pred_mean = np.mean(y_pred_list, 1)
             y_pred_std = np.std(y_pred_list, 1)
-            print(y_pred_std.mean())
             if is_cuda:
                 X_linspace_cpu = X_linspace.cpu()
                 y_pred_mean_cpu = y_pred_mean.cpu()
@@ -866,13 +963,22 @@ def plot_individual_tasks(tasks, statistics_Net, generative_Net, generative_Net_
     return [statistics_list]
 
 
-def plot_individual_tasks_bounce(tasks, num_examples_show = 40, num_tasks_show = 6, master_model = None, num_shots = None):
+def plot_individual_tasks_bounce(tasks, num_examples_show = 40, num_tasks_show = 6, master_model = None, autoencoder = None, num_shots = None, **kwargs):
     import matplotlib.pylab as plt
     fig = plt.figure(figsize = (25, num_tasks_show / 3 * 8))
     plt.subplots_adjust(hspace = 0.4)
     tasks_key_show = np.random.choice(list(tasks.keys()), num_tasks_show)
     for k, task_key in enumerate(tasks_key_show):
-        ((X_train, y_train), (X_test, y_test)), _ = tasks[task_key]
+        if autoencoder is not None:
+            forward_steps = kwargs["forward_steps"]
+            forward_steps_idx = torch.LongTensor(np.array(forward_steps) - 1).cuda()
+            ((X_train_obs, y_train_obs), (X_test_obs, y_test_obs)), _ = tasks[task_key]
+            X_train = forward(autoencoder.encode, X_train_obs)
+            y_train = forward(autoencoder.encode, y_train_obs[:, forward_steps_idx])
+            X_test = forward(autoencoder.encode, X_test_obs)
+            y_test = forward(autoencoder.encode, y_test_obs[:, forward_steps_idx])
+        else:
+            ((X_train, y_train), (X_test, y_test)), _ = tasks[task_key]
         num_steps = int(X_test.size(1) / 2)
         is_cuda = X_train.is_cuda
         X_test_numpy = X_test.cpu() if is_cuda else X_test
@@ -914,12 +1020,21 @@ def plot_individual_tasks_bounce(tasks, num_examples_show = 40, num_tasks_show =
     plt.show()
 
 
-def plot_few_shot_loss(master_model, tasks, isplot = True):
+def plot_few_shot_loss(master_model, tasks, isplot = True, autoencoder = None, **kwargs):
     num_shots_list = [20, 30, 40, 50, 70, 100, 200, 300, 500, 1000]
     mse_list_whole = []
     for task_key, task in tasks.items():
         mse_list = []
-        ((X_train, y_train), (X_test, y_test)), _ = tasks[task_key]
+        if autoencoder is not None:
+            forward_steps = kwargs["forward_steps"]
+            forward_steps_idx = torch.LongTensor(np.array(forward_steps) - 1).cuda()
+            ((X_train_obs, y_train_obs), (X_test_obs, y_test_obs)), _ = task
+            X_train = forward(autoencoder.encode, X_train_obs)
+            y_train = forward(autoencoder.encode, y_train_obs[:, forward_steps_idx])
+            X_test = forward(autoencoder.encode, X_test_obs)
+            y_test = forward(autoencoder.encode, y_test_obs[:, forward_steps_idx])
+        else:
+            ((X_train, y_train), (X_test, y_test)), _ = task
         is_cuda = X_train.is_cuda
         for num_shots in num_shots_list:
             idx = torch.LongTensor(np.random.choice(range(len(X_train)), num_shots, replace = False))
@@ -930,8 +1045,14 @@ def plot_few_shot_loss(master_model, tasks, isplot = True):
             statistics = master_model.statistics_Net.forward_inputs(X_few_shot, y_few_shot)
             if isinstance(statistics, tuple):
                 statistics = statistics[0]
-            y_test_pred = master_model.generative_Net(X_test, statistics)
-            mse_list.append(nn.MSELoss()(y_test_pred, y_test).data[0])
+            if autoencoder is not None:
+                master_model.generative_Net.set_latent_param(statistics)
+                y_pred = get_forward_pred(master_model.generative_Net, X_test, forward_steps)
+                mse = kwargs["criterion"](X_test, y_pred, X_test_obs, y_test_obs, autoencoder, loss_fun = nn.MSELoss()).data[0]
+            else:
+                y_test_pred = master_model.generative_Net(X_test, statistics)
+                mse = nn.MSELoss()(y_test_pred, y_test).data[0]
+            mse_list.append(mse)
         mse_list_whole.append(mse_list)
     mse_list_whole = np.array(mse_list_whole)
     mse_mean = mse_list_whole.mean(0)
