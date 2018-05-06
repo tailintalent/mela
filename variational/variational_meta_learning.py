@@ -554,7 +554,7 @@ class Loss_with_autoencoder(nn.Module):
         self.loss_fun = get_criterion(self.core)
         self.forward_steps_idx = torch.LongTensor(np.array(forward_steps) - 1).cuda()
     
-    def forward(self, X_latent, y_latent_pred, X_train_obs, y_train_obs, autoencoder, loss_fun = None):
+    def forward(self, X_latent, y_latent_pred, X_train_obs, y_train_obs, autoencoder, loss_fun = None, verbose = False):
         X_latent = X_latent.view(X_latent.size(0), -1, 2)
         recons = forward(autoencoder.decode, X_latent)
         pred_recons = forward(autoencoder.decode, y_latent_pred)
@@ -562,6 +562,8 @@ class Loss_with_autoencoder(nn.Module):
             loss_fun = self.loss_fun
         loss_auxilliary = loss_fun(recons, X_train_obs)
         loss_pred = loss_fun(pred_recons, y_train_obs[:, self.forward_steps_idx])
+        if verbose:
+            print("loss_aux: {0:.6f}\t loss_pred: {1:.6f}".format(loss_auxilliary.data[0], loss_pred.data[0]))
         return loss_pred + loss_auxilliary * self.aux_coeff
 
 
@@ -774,7 +776,7 @@ def evaluate(task, statistics_Net, generative_Net, generative_Net_logstd = None,
                 generative_Net.set_latent_param(statistics)
                 y_pred = get_forward_pred(generative_Net, X_train, forward_steps)
                 loss = criterion(X_train, y_pred, X_train_obs, y_train_obs, autoencoder)
-                mse = criterion(X_train, y_pred, X_train_obs, y_train_obs, autoencoder, loss_fun = loss_fun)
+                mse = criterion(X_train, y_pred, X_train_obs, y_train_obs, autoencoder, loss_fun = loss_fun, verbose = True)
             else:
                 y_pred = generative_Net(X_test, statistics)
                 loss = criterion(y_pred, y_test)
@@ -791,7 +793,7 @@ def evaluate(task, statistics_Net, generative_Net, generative_Net_logstd = None,
         return loss.data[0], loss.data[0], mse.data[0], 0
 
 
-def get_reg(reg_dict, statistics_Net = None, generative_Net = None, is_cuda = False):
+def get_reg(reg_dict, statistics_Net = None, generative_Net = None, autoencoder = None, is_cuda = False):
     reg = Variable(torch.FloatTensor([0]), requires_grad = False)
     if is_cuda:
         reg = reg.cuda()
@@ -800,6 +802,8 @@ def get_reg(reg_dict, statistics_Net = None, generative_Net = None, is_cuda = Fa
             reg_net = statistics_Net
         elif net_name == "generative_Net":
             reg_net = generative_Net
+        elif net_name == "autoencoder":
+            reg_net = autoencoder
         if isinstance(reg_net, nn.DataParallel):
             reg_net = reg_net.module
         for reg_type, reg_amp in reg_info.items():

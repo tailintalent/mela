@@ -316,21 +316,21 @@ VAE_beta = 0.2
 
 output_size = 2
 lr = 5e-5
-num_train_tasks = 3
-num_test_tasks = 3
+num_train_tasks = 50
+num_test_tasks = 20
 batch_size_task = min(100, num_train_tasks)
 num_backwards = 1
-num_iter = 20000
-pre_pooling_neurons = 400
+num_iter = 3000
+pre_pooling_neurons = 200
 num_context_neurons = 0
 statistics_pooling = "max"
-main_hidden_neurons = (40, 40, 40)
-patience = 400
+main_hidden_neurons = (40, 40)
+patience = 200
 reg_amp = 1e-6
 activation_gen = "leakyRelu"
 activation_model = "leakyRelu"
 optim_mode = "indi"
-loss_core = "huber"
+loss_core = "mse"
 array_id = "0"
 
 exp_id = get_args(exp_id, 1)
@@ -360,7 +360,9 @@ except:
 
 # Settings:
 reg_dict = {"statistics_Net": {"weight": reg_amp, "bias": reg_amp},
-            "generative_Net": {"weight": reg_amp, "bias": reg_amp, "W_gen": reg_amp, "b_gen": reg_amp}}
+            "generative_Net": {"weight": reg_amp, "bias": reg_amp, "W_gen": reg_amp, "b_gen": reg_amp},
+            "autoencoder": {"weight": 1e-7, "bias": 1e-7}}
+reg_multiplier = np.linspace(0, 1, num_iter + 1) ** 2
 task_settings = {
     "zdim": 1,
     "z_settings": ["Gaussian", (0, 1)],
@@ -384,7 +386,7 @@ struct_param_gen_base = [
 ]
 isParallel = False
 inspect_interval = 5
-save_interval = 500
+save_interval = 50
 filename = variational_model_PATH + "/trained_models/{0}/Net_{1}_input_{2}_({3},{4})_stat_{5}_pre_{6}_pool_{7}_context_{8}_hid_{9}_batch_{10}_back_{11}_VAE_{12}_{13}_uncer_{14}_lr_{15}_reg_{16}_actgen_{17}_actmodel_{18}_struct_{19}_{20}_core_{21}_{22}_".format(
     exp_id, task_id_list, input_size, num_train_tasks, num_test_tasks, statistics_output_neurons, pre_pooling_neurons, statistics_pooling, num_context_neurons, main_hidden_neurons, batch_size_task, num_backwards, is_VAE, VAE_beta, is_uncertainty_net, lr, reg_amp, activation_gen, activation_model, get_struct_str(struct_param_gen_base), optim_mode, loss_core, exp_id)
 make_dir(filename)
@@ -496,10 +498,10 @@ record_data(data_record, [exp_id, tasks_train, tasks_test, task_id_list, task_se
              "struct_param_gen_base", "struct_param_pre", "struct_param_post", "statistics_pooling", "activation_gen", "activation_model"])
 
 
-# In[9]:
+# In[6]:
 
 
-def train(statistics_Net, generative_Net, autoencoder, tasks_train, tasks_test):
+def train(statistics_Net, generative_Net, autoencoder, tasks_train, tasks_test, epoch):
     chosen_task_keys = np.random.choice(list(tasks_train.keys()), batch_size_task, replace = False).tolist()
     if optim_mode == "indi":
         if is_VAE:
@@ -540,12 +542,12 @@ def train(statistics_Net, generative_Net, autoencoder, tasks_train, tasks_test):
                         if is_autoencoder:
                             generative_Net.set_latent_param(statistics)
                             y_pred = get_forward_pred(generative_Net, X_train, forward_steps)
-                            loss = criterion(X_train, y_pred, X_train_obs, y_train_obs, autoencoder)
+                            loss = criterion(X_train, y_pred, X_train_obs, y_train_obs, autoencoder, verbose = True)
                         else:
                             y_pred = generative_Net(X_train, statistics)
                             loss = criterion(y_pred, y_train)
-                reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, is_cuda = is_cuda)
-                loss = loss + reg
+                reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, autoencoder = autoencoder, is_cuda = is_cuda)
+                loss = loss + reg * reg_multiplier[epoch]
                 loss.backward(retain_graph = True)
                 optimizer.step()
         # Perform gradient on the KL-divergence:
@@ -594,8 +596,8 @@ def train(statistics_Net, generative_Net, autoencoder, tasks_train, tasks_test):
                     else:
                         y_pred = generative_Net(X_train, statistics)
                         loss = criterion(y_pred, y_train)    
-            reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, is_cuda = is_cuda)
-            loss_total = loss_total + loss + reg
+            reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, autoencoder = autoencoder, is_cuda = is_cuda)
+            loss_total = loss_total + loss + reg * reg_multiplier[epoch]
         loss_total.backward()
         optimizer.step()
     else:
@@ -617,7 +619,7 @@ def train(statistics_Net, generative_Net, autoencoder, tasks_train, tasks_test):
 
 # Training:
 for i in range(num_iter + 1):
-    to_stop = train(statistics_Net, generative_Net, autoencoder, tasks_train, tasks_test)
+    to_stop = train(statistics_Net, generative_Net, autoencoder, tasks_train, tasks_test, epoch = i)
 
     # Validation and visualization:
     if i % inspect_interval == 0 or to_stop:
@@ -626,7 +628,7 @@ for i in range(num_iter + 1):
         for task_key, task in tasks_train.items():
             (_, (X_test, y_test)), _ = task
             loss_test, loss_test_sampled, mse, KLD_test = evaluate(task, statistics_Net, generative_Net, generative_Net_logstd = generative_Net_logstd, criterion = criterion, is_VAE = is_VAE, is_regulated_net = is_regulated_net, autoencoder = autoencoder, forward_steps = forward_steps)
-            reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, is_cuda = is_cuda).data[0]
+            reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, autoencoder = autoencoder, is_cuda = is_cuda).data[0] * reg_multiplier[i]
             data_record["loss"][task_key].append(loss_test)
             data_record["loss_sampled"][task_key].append(loss_test_sampled)
             data_record["mse"][task_key].append(mse)
@@ -636,7 +638,7 @@ for i in range(num_iter + 1):
         for task_key, task in tasks_test.items():
             (_, (X_test, y_test)), _ = task
             loss_test, loss_test_sampled, mse, KLD_test = evaluate(task, statistics_Net, generative_Net, generative_Net_logstd = generative_Net_logstd, criterion = criterion, is_VAE = is_VAE, is_regulated_net = is_regulated_net, autoencoder = autoencoder, forward_steps = forward_steps)
-            reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, is_cuda = is_cuda).data[0]
+            reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, autoencoder = autoencoder, is_cuda = is_cuda).data[0] * reg_multiplier[i]
             data_record["loss"][task_key].append(loss_test)
             data_record["loss_sampled"][task_key].append(loss_test_sampled)
             data_record["mse"][task_key].append(mse)
@@ -704,6 +706,8 @@ for i in range(num_iter + 1):
             pass
     if i % save_interval == 0 or to_stop:
         record_data(info_dict, [master_model.model_dict, i], ["model_dict", "iter"])
+        if is_autoencoder:
+            record_data(info_dict, [autoencoder.state_dict()], ["autoencoder"])
         pickle.dump(info_dict, open(filename + "info.p", "wb"))
     if to_stop:
         print("The training loss stops decreasing for {0} steps. Early stopping at {1}.".format(patience, i))
