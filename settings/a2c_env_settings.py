@@ -7,11 +7,11 @@ ENV_SETTINGS_CHOICE = {"envBounceBase": {
 								 "no_bricks": True,
 								 "ball_shape": "square",
 								 "ball_radius": 3,
-								 "ball_vmax": 2,
+								 "ball_vmax": 4,
 								 "num_paddles": 0,
 								 "screen_height": 39,
 								 "screen_width": 39,
-								 "max_range": (0,40),
+								 "max_range": (0, 39),
 								 "step_dt": 1,
 								 "dt": 0.01,
 								}

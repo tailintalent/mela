@@ -25,7 +25,7 @@ from AI_scientist.util import plot_matrices
 from AI_scientist.settings.a2c_env_settings import ENV_SETTINGS_CHOICE
 from AI_scientist.settings.global_param import COLOR_LIST
 from AI_scientist.pytorch.net import Net
-from AI_scientist.pytorch.util_pytorch import get_activation, get_optimizer, get_criterion, Loss_Fun
+from AI_scientist.pytorch.util_pytorch import get_activation, get_optimizer, get_criterion, Loss_Fun, to_Variable, to_np_array
 
 
 # In[2]:
@@ -981,7 +981,7 @@ def plot_individual_tasks(tasks, statistics_Net, generative_Net, generative_Net_
     return [statistics_list]
 
 
-def plot_individual_tasks_bounce(tasks, num_examples_show = 40, num_tasks_show = 6, master_model = None, model = None, autoencoder = None, num_shots = None, **kwargs):
+def plot_individual_tasks_bounce(tasks, num_examples_show = 40, num_tasks_show = 6, master_model = None, model = None, autoencoder = None, num_shots = None, highlight_top = None, **kwargs):
     import matplotlib.pylab as plt
     fig = plt.figure(figsize = (25, num_tasks_show / 3 * 8))
     plt.subplots_adjust(hspace = 0.4)
@@ -1001,13 +1001,21 @@ def plot_individual_tasks_bounce(tasks, num_examples_show = 40, num_tasks_show =
             ((X_train, y_train), (X_test, y_test)), _ = tasks[task_key]
         num_steps = int(X_test.size(1) / 2)
         is_cuda = X_train.is_cuda
-        X_test_numpy = X_test.cpu() if is_cuda else X_test
-        y_test_numpy = y_test.cpu() if is_cuda else y_test
-        X_test_numpy = X_test_numpy.data.numpy()
-        y_test_numpy = y_test_numpy.data.numpy()
+        X_test_numpy, y_test_numpy = to_np_array(X_test, y_test)
         if len(X_test_numpy.shape) == 2:
             X_test_numpy = X_test_numpy.reshape(-1, num_steps, 2)
             y_test_numpy = y_test_numpy.reshape(-1, int(y_test_numpy.shape[1] / 2), 2)
+
+        # Get highlighted examples:
+        if highlight_top is not None:
+            relevance_train = get_relevance(X_train, y_train, master_model.statistics_Net)
+            X_sorted, y_sorted, relevance_sorted = sort_datapoints(X_train, y_train, relevance_train, top = highlight_top)
+            if len(X_sorted.shape) == 2:
+                X_sorted = X_sorted.view(-1, num_steps, 2)
+                y_sorted = y_sorted.view(-1, int(y_sorted.shape[1] / 2), 2)
+            X_sorted, y_sorted = to_np_array(X_sorted, y_sorted)
+
+        # Get model prediction:
         if master_model is not None:
             if num_shots is None:
                 statistics = master_model.statistics_Net.forward_inputs(X_train, y_train)
@@ -1019,18 +1027,24 @@ def plot_individual_tasks_bounce(tasks, num_examples_show = 40, num_tasks_show =
             if isinstance(statistics, tuple):
                 statistics = statistics[0]
             y_pred = master_model.generative_Net(X_test, statistics)
-            y_pred_numpy = y_pred.cpu() if is_cuda else y_pred
-            y_pred_numpy = y_pred_numpy.data.numpy()
+            y_pred_numpy = to_np_array(y_pred)
             if len(y_pred_numpy.shape) == 2:
                 y_pred_numpy = y_pred_numpy.reshape(-1, int(y_pred_numpy.shape[1] / 2), 2)
+
+            # Prediction for highlighted examples:
+            if highlight_top is not None:
+                y_sorted_pred = master_model.generative_Net(to_Variable(X_sorted.reshape(X_sorted.shape[0], -1), is_cuda = is_cuda), statistics)
+                y_sorted_pred = to_np_array(y_sorted_pred)
+                if len(y_sorted_pred.shape) == 2:
+                    y_sorted_pred = y_sorted_pred.reshape(-1, int(y_sorted_pred.shape[1] / 2), 2)
         else:
             if model is not None:
                 y_pred = model(X_test)
-                y_pred_numpy = y_pred.cpu() if is_cuda else y_pred
-                y_pred_numpy = y_pred_numpy.data.numpy()
+                y_pred_numpy = to_np_array(y_pred)
                 if len(y_pred_numpy.shape) == 2:
                     y_pred_numpy = y_pred_numpy.reshape(-1, int(y_pred_numpy.shape[1] / 2), 2)
-        
+
+        # Plotting:
         ax = fig.add_subplot(int(np.ceil(num_tasks_show / float(3))), 3, k + 1)
         for i in range(len(X_test_numpy)):
             if i > num_examples_show:
@@ -1044,6 +1058,20 @@ def plot_individual_tasks_bounce(tasks, num_examples_show = 40, num_tasks_show =
                 y_pred_ele = y_pred_numpy[i]
                 ax.plot(np.concatenate((x_ele[:,0], y_pred_ele[:,0])), np.concatenate((x_ele[:,1], y_pred_ele[:,1])), ".--", color = COLOR_LIST[i % len(COLOR_LIST)], zorder = -1)
                 ax.scatter(y_pred_ele[:,0], y_pred_ele[:,1], s = np.linspace(10, 20, len(y_ele[:,0])), marker = "o", color = "b", zorder = 2)
+
+        # Plotting highlighted examples:
+        if highlight_top is not None:
+            for i in range(highlight_top):
+                x_ele = X_sorted[i]
+                y_ele = y_sorted[i]
+                ax.plot(np.concatenate((x_ele[:,0], y_ele[:,0])), np.concatenate((x_ele[:,1], y_ele[:,1])), ".-", color = "k", zorder = -1)
+                ax.scatter(y_ele[:,0], y_ele[:,1], s = np.linspace(10, 20, len(y_ele[:,0])), marker = "o", color = "r", zorder = 2)
+                ax.set_title(task_key)
+                if master_model is not None or model is not None:
+                    y_pred_ele = y_sorted_pred[i]
+                    ax.plot(np.concatenate((x_ele[:,0], y_pred_ele[:,0])), np.concatenate((x_ele[:,1], y_pred_ele[:,1])), ".--", color = "k", zorder = -1)
+                    ax.scatter(y_pred_ele[:,0], y_pred_ele[:,1], s = np.linspace(10, 20, len(y_ele[:,0])), marker = "o", color = "k", zorder = 2)
+
     plt.show()
 
 
@@ -1404,10 +1432,10 @@ def get_bouncing_states(settings, num_examples, data_format = "states", is_cuda 
     screen_size = ENV_SETTINGS_CHOICE[env_name]["screen_height"]
     ball_radius = ENV_SETTINGS_CHOICE[env_name]["ball_radius"]
     
-    vertex_bottom_left = tuple(np.random.rand(2) * screen_size / 4 + ball_radius)
-    vertex_bottom_right = (screen_size - np.random.rand() * screen_size / 4 - ball_radius, np.random.rand() * screen_size / 4 + ball_radius)
-    vertex_top_right = tuple(screen_size - np.random.rand(2) * screen_size / 4 - ball_radius)
-    vertex_top_left = (np.random.rand() * screen_size / 4 + ball_radius, screen_size - np.random.rand() * screen_size / 4 - ball_radius)
+    vertex_bottom_left = tuple(np.random.rand(2) * screen_size / 3 + ball_radius)
+    vertex_bottom_right = (screen_size - np.random.rand() * screen_size / 3 - ball_radius, np.random.rand() * screen_size / 3 + ball_radius)
+    vertex_top_right = tuple(screen_size - np.random.rand(2) * screen_size / 3 - ball_radius)
+    vertex_top_left = (np.random.rand() * screen_size / 3 + ball_radius, screen_size - np.random.rand() * screen_size / 3 - ball_radius)
     boundaries = [vertex_bottom_left, vertex_bottom_right, vertex_top_right, vertex_top_left]
     
     ((X_train, y_train), (X_test, y_test), (reflected_train, reflected_test)), info =         get_env_data(

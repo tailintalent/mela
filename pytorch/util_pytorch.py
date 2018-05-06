@@ -71,6 +71,36 @@ def record_data(data_record_dict, data_list, key_list, nolist = False):
                 data_record_dict[key].append(data)
 
 
+def to_np_array(*arrays):
+    array_list = []
+    for array in arrays:
+        if isinstance(array, Variable):
+            if array.is_cuda:
+                array = array.cpu()
+            array = array.data
+        if isinstance(array, torch.FloatTensor) or isinstance(array, torch.LongTensor) or isinstance(array, torch.ByteTensor):
+            array = array.numpy()
+        array_list.append(array)
+    if len(array_list) == 1:
+        array_list = array_list[0]
+    return array_list
+
+
+def to_Variable(*arrays, is_cuda = False, requires_grad = False):
+    array_list = []
+    for array in arrays:
+        if isinstance(array, np.ndarray):
+            array = torch.Tensor(array)
+        if isinstance(array, torch.FloatTensor) or isinstance(array, torch.LongTensor) or isinstance(array, torch.ByteTensor):
+            array = Variable(array, requires_grad = requires_grad)
+        if is_cuda:
+            array = array.cuda()
+        array_list.append(array)
+    if len(array_list) == 1:
+        array_list = array_list[0]
+    return array_list
+
+
 class Batch_Generator(object):
     def __init__(self, X, y, batch_size = 50, target_one_hot_off = False):
         """
@@ -403,13 +433,6 @@ def visualize_graph(var, params=None):
                     add_nodes(t)
     add_nodes(var.grad_fn)
     return dot
-
-
-def to_Variable(X, requires_grad = False):
-    if isinstance(X, list):
-        return [Variable(torch.from_numpy(element), requires_grad = requires_grad).type(torch.FloatTensor) for element in X]
-    else:
-        return Variable(torch.from_numpy(X), requires_grad = requires_grad).type(torch.FloatTensor)
 
 
 def softmax(X, axis = -1):
