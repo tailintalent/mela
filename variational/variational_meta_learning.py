@@ -514,7 +514,9 @@ def get_forward_pred(predictor, latent, forward_steps):
         current_latent = torch.cat([current_latent[:,1:], current_pred], 1)
     pred_list = torch.cat(pred_list, 1)
     pred_list = pred_list.view(pred_list.size(0), -1, 2)
-    forward_steps_idx = torch.LongTensor(np.array(forward_steps) - 1).cuda()
+    forward_steps_idx = torch.LongTensor(np.array(forward_steps) - 1)
+    if predictor.is_cuda:
+        forward_steps_idx = forward_steps_idx.cuda()
     return pred_list[:, forward_steps_idx]
 
 
@@ -526,7 +528,9 @@ def get_autoencoder_losses(conv_encoder, predictor, X_motion, y_motion, forward_
     pred_recons = forward(conv_encoder.decode, latent_pred)
     recons = forward(conv_encoder.decode, latent)
     loss_auxiliary = nn.MSELoss()(recons, X_motion)
-    forward_steps_idx = torch.LongTensor(np.array(forward_steps) - 1).cuda()
+    forward_steps_idx = torch.LongTensor(np.array(forward_steps) - 1)
+    if predictor.is_cuda:
+        forward_steps_idx = forward_steps_idx.cuda()
     y_motion = y_motion[:, forward_steps_idx]
     loss_pred_recons = nn.MSELoss()(pred_recons, y_motion)
     return loss_auxiliary, loss_pred_recons, pred_recons
@@ -547,12 +551,15 @@ def get_rollout_pred_loss(conv_encoder, predictor, X_motion, y_motion, max_step,
 
 
 class Loss_with_autoencoder(nn.Module):
-    def __init__(self, core, forward_steps, aux_coeff = 0.5):
+    def __init__(self, core, forward_steps, aux_coeff = 0.5, is_cuda = False):
         super(Loss_with_autoencoder, self).__init__()
         self.core = core
         self.aux_coeff = aux_coeff
         self.loss_fun = get_criterion(self.core)
-        self.forward_steps_idx = torch.LongTensor(np.array(forward_steps) - 1).cuda()
+        self.is_cuda = is_cuda
+        self.forward_steps_idx = torch.LongTensor(np.array(forward_steps) - 1)
+        if self.is_cuda:
+            self.forward_steps_idx = self.forward_steps_idx.cuda()
     
     def forward(self, X_latent, y_latent_pred, X_train_obs, y_train_obs, autoencoder, loss_fun = None, verbose = False):
         X_latent = X_latent.view(X_latent.size(0), -1, 2)
@@ -722,7 +729,7 @@ def get_tasks(task_id_list, num_train, num_test, task_settings = {}, is_cuda = F
             task_mode = task_id.split("-")[1]
             task = get_master_function(task_settings["z_settings"], mode = task_mode, settings = task_settings, num_examples = num_examples, is_cuda = is_cuda,)
         elif task_id == "bounce-states":
-            task = get_bouncing_states(data_format = "states", settings = task_settings, num_examples = num_examples, is_cuda = is_cuda, **kwargs)
+            task = get_bouncing_states(data_format = "states", settings = task_settings, num_examples = num_examples, is_cuda = is_cuda, is_flatten = True, **kwargs)
         elif task_id == "bounce-images":
             task = get_bouncing_states(data_format = "images", settings = task_settings, num_examples = num_examples, is_cuda = is_cuda, **kwargs)
         else:
@@ -748,7 +755,9 @@ def get_tasks(task_id_list, num_train, num_test, task_settings = {}, is_cuda = F
 def evaluate(task, statistics_Net, generative_Net, generative_Net_logstd = None, criterion = None, is_VAE = False, is_regulated_net = False, autoencoder = None, **kwargs):
     if autoencoder is not None:
         forward_steps = kwargs["forward_steps"]
-        forward_steps_idx = torch.LongTensor(np.array(forward_steps) - 1).cuda()
+        forward_steps_idx = torch.LongTensor(np.array(forward_steps) - 1)
+        if statistics_Net.is_cuda:
+            forward_steps_idx = forward_steps_idx.cuda()
         ((X_train_obs, y_train_obs), (X_test_obs, y_test_obs)), _ = task
         X_train = forward(autoencoder.encode, X_train_obs)
         y_train = forward(autoencoder.encode, y_train_obs[:, forward_steps_idx])
@@ -806,8 +815,9 @@ def get_reg(reg_dict, statistics_Net = None, generative_Net = None, autoencoder 
             reg_net = autoencoder
         if isinstance(reg_net, nn.DataParallel):
             reg_net = reg_net.module
-        for reg_type, reg_amp in reg_info.items():
-            reg = reg + reg_net.get_regularization(source = [reg_type]) * reg_amp
+        if reg_net is not None:
+            for reg_type, reg_amp in reg_info.items():
+                reg = reg + reg_net.get_regularization(source = [reg_type]) * reg_amp
     return reg
 
 
@@ -834,7 +844,9 @@ def plot_task_ensembles(tasks, statistics_Net, generative_Net, is_VAE = False, i
     for task_key, task in tasks.items():
         if autoencoder is not None:
             forward_steps = kwargs["forward_steps"]
-            forward_steps_idx = torch.LongTensor(np.array(forward_steps) - 1).cuda()
+            forward_steps_idx = torch.LongTensor(np.array(forward_steps) - 1)
+            if statistics_Net.is_cuda:
+                forward_steps_idx = forward_steps_idx.cuda()
             (_, (X_test_obs, y_test_obs)), info = task
             X_test = forward(autoencoder.encode, X_test_obs)
             y_test = forward(autoencoder.encode, y_test_obs[:, forward_steps_idx])
@@ -975,7 +987,9 @@ def plot_individual_tasks_bounce(tasks, num_examples_show = 40, num_tasks_show =
     for k, task_key in enumerate(tasks_key_show):
         if autoencoder is not None:
             forward_steps = kwargs["forward_steps"]
-            forward_steps_idx = torch.LongTensor(np.array(forward_steps) - 1).cuda()
+            forward_steps_idx = torch.LongTensor(np.array(forward_steps) - 1)
+            if autoencoder.is_cuda:
+                forward_steps_idx = forward_steps_idx.cuda()
             ((X_train_obs, y_train_obs), (X_test_obs, y_test_obs)), _ = tasks[task_key]
             X_train = forward(autoencoder.encode, X_train_obs)
             y_train = forward(autoencoder.encode, y_train_obs[:, forward_steps_idx])
@@ -1031,7 +1045,9 @@ def plot_few_shot_loss(master_model, tasks, isplot = True, autoencoder = None, *
         mse_list = []
         if autoencoder is not None:
             forward_steps = kwargs["forward_steps"]
-            forward_steps_idx = torch.LongTensor(np.array(forward_steps) - 1).cuda()
+            forward_steps_idx = torch.LongTensor(np.array(forward_steps) - 1)
+            if autoencoder.is_cuda:
+                forward_steps_idx = forward_steps_idx.cuda()
             ((X_train_obs, y_train_obs), (X_test_obs, y_test_obs)), _ = task
             X_train = forward(autoencoder.encode, X_train_obs)
             y_train = forward(autoencoder.encode, y_train_obs[:, forward_steps_idx])
@@ -1103,7 +1119,7 @@ def plot_statistics_vs_z(z_list, statistics_list, mode = "corrcoef", title = Non
     z_size = z_list.shape[1]
     num_rows = int(np.ceil(z_size / num_columns))
     fig = plt.figure(figsize = (25, num_rows * 3.2))
-    
+
     for i in range(z_size):
         ax = fig.add_subplot(num_rows, num_columns, i + 1)
         for j in range(statistics_list.shape[1]):

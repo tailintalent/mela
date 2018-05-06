@@ -5,7 +5,7 @@ from AI_scientist.util import new_dict
 ENV_SETTINGS_CHOICE = {"envBounceBase": {
 								 "num_balls": 1,
 								 "no_bricks": True,
-								 "ball_shape": "circle",
+								 "ball_shape": "square",
 								 "ball_radius": 3,
 								 "ball_vmax": 2,
 								 "num_paddles": 0,
