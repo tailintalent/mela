@@ -13,7 +13,7 @@ ENV_SETTINGS_CHOICE = {"envBounceBase": {
 								 "screen_width": 39,
 								 "max_range": (0, 39),
 								 "step_dt": 1,
-								 "dt": 0.01,
+								 "dt": 0.1,
 								}
 					  }
 ENV_SETTINGS_CHOICE["envBounceStates"] = new_dict(ENV_SETTINGS_CHOICE["envBounceBase"],
