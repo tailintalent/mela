@@ -104,7 +104,7 @@ loss_core = get_args(loss_core, 18)
 array_id = get_args(array_id, 19)
 
 try:
-    get_ipython().run_line_magic('matplotlib', 'inline')
+    get_ipython().magic(u'matplotlib inline')
     isplot = True
 except:
     isplot = False

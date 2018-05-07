@@ -95,11 +95,18 @@ def plot_tasks(tasks, autoencoder, forward_steps, num_tasks = 3):
         y_test = forward(autoencoder.encode, y_test_obs[:, forward_steps_idx])
         
         # Plotting:
-        print("Task {0}:".format(task_key))
-        plot_matrices(np.concatenate((X_test_obs[0].cpu().data.numpy(), y_test_obs[:, torch.LongTensor(np.array(forward_steps) - 1).cuda()][0].cpu().data.numpy())))
-        latent_pred = get_forward_pred(generative_Net, X_test, forward_steps)
-        pred_recons = forward(autoencoder.decode, latent_pred)
-        plot_matrices(np.concatenate((forward(autoencoder.decode, X_test.view(X_test.size(0), -1, 2))[0].cpu().data.numpy(), pred_recons[0].cpu().data.numpy())))  
+        if X_train.is_cuda:
+            print("Task {0}:".format(task_key))
+            plot_matrices(np.concatenate((X_test_obs[0].cpu().data.numpy(), y_test_obs[:, torch.LongTensor(np.array(forward_steps) - 1).cuda()][0].cpu().data.numpy())))
+            latent_pred = get_forward_pred(generative_Net, X_test, forward_steps)
+            pred_recons = forward(autoencoder.decode, latent_pred)
+            plot_matrices(np.concatenate((forward(autoencoder.decode, X_test.view(X_test.size(0), -1, 2))[0].cpu().data.numpy(), pred_recons[0].cpu().data.numpy())))  
+        else:
+            print("Task {0}:".format(task_key))
+            plot_matrices(np.concatenate((X_test_obs[0].data.numpy(), y_test_obs[:, torch.LongTensor(np.array(forward_steps) - 1)][0].data.numpy())))
+            latent_pred = get_forward_pred(generative_Net, X_test, forward_steps)
+            pred_recons = forward(autoencoder.decode, latent_pred)
+            plot_matrices(np.concatenate((forward(autoencoder.decode, X_test.view(X_test.size(0), -1, 2))[0].data.numpy(), pred_recons[0].data.numpy())))  
 
 
 
@@ -142,19 +149,20 @@ class Conv_Autoencoder(nn.Module):
         return self.encoder.get_regularization(source = source, mode = mode) +                 self.decoder.get_regularization(source = source, mode = mode) +                 self.enc_fully.get_regularization(source = source, mode = mode) +                 self.dec_fully.get_regularization(source = source, mode = mode)
 
 
-def train_epoch_pretrain(train_loader, X_test_all, autoencoder):
+def train_epoch_pretrain(train_loader, X_test_all, autoencoder, optimizer_pre):
     for batch_id, X_batch in enumerate(train_loader):
         X_batch = Variable(X_batch)
-        optimizer.zero_grad()
+        optimizer_pre.zero_grad()
         reconstruct = forward(autoencoder, X_batch)
         reg = autoencoder.get_regularization(source = ["weight", "bias"]) * reg_amp_autoencoder
         reg_latent = forward(autoencoder, X_batch).mean() * reg_amp_latent
         loss_train = nn.MSELoss()(reconstruct, X_batch) + reg + reg_latent
         loss_train.backward()
-        optimizer.step()
+        optimizer_pre.step()
 
     reconstruct_test = forward(autoencoder, X_test_all)
     loss_test = nn.MSELoss()(reconstruct_test, X_test_all)
+    to_stop = early_stopping_pre.monitor(loss_test.data[0])
     print("epoch {0} \tloss_train: {1:.6f}\tloss_test: {2:.6f}\treg: {3:.6f}\treg_latent: {4:.6f}".format(epoch, loss_train.data[0], loss_test.data[0], reg.data[0], reg_latent.data[0]))
     if epoch % 10 == 0:
         plot_matrices(X_batch[0].cpu().data.numpy(), images_per_row = 5)
@@ -245,7 +253,7 @@ def train_epoch_joint(motion_train_loader, X_motion_test, y_motion_test, conv_en
 
 # ## Training conv_encoder and prediction at the same time:
 
-# In[14]:
+# In[5]:
 
 
 # task = tasks_train[list(tasks_train.keys())[0]]
@@ -323,22 +331,23 @@ task_id_list = [
 # "bounce-states",
 "bounce-images",
 ]
-exp_id = "test"
+exp_id = "encode"
 input_size = 6
 statistics_output_neurons = 8
 is_VAE = False
 is_uncertainty_net = False
 is_regulated_net = False
 is_load_data = False
-is_autoencoder = False
+is_autoencoder = True
 forward_steps = [1]
-max_forward_steps = 2
+max_forward_steps = 1
 VAE_beta = 0.2
+exp_mode = "meta"
 
 output_size = 2
 lr = 5e-5
-num_train_tasks = 30
-num_test_tasks = 10
+num_train_tasks = 40
+num_test_tasks = 20
 batch_size_task = min(100, num_train_tasks)
 num_backwards = 1
 num_iter = 3000
@@ -355,23 +364,24 @@ loss_core = "mse"
 array_id = "0"
 
 exp_id = get_args(exp_id, 1)
-task_id_list = get_args(task_id_list, 2, type = "tuple")
-statistics_output_neurons = get_args(statistics_output_neurons, 3, type = "int")
-is_VAE = get_args(is_VAE, 4, type = "bool")
-VAE_beta = get_args(VAE_beta, 5, type = "float")
-lr = get_args(lr, 6, type = "float")
-batch_size_task = get_args(batch_size_task, 7, type = "int")
-pre_pooling_neurons = get_args(pre_pooling_neurons, 8, type = "int")
-num_context_neurons = get_args(num_context_neurons, 9, type = "int")
-statistics_pooling = get_args(statistics_pooling, 10)
-main_hidden_neurons = get_args(main_hidden_neurons, 11, "tuple")
-reg_amp = get_args(reg_amp, 12, type = "float")
-activation_gen = get_args(activation_gen, 13)
-activation_model = get_args(activation_model, 14)
-optim_mode = get_args(optim_mode, 15)
-is_uncertainty_net = get_args(is_uncertainty_net, 16, "bool")
-loss_core = get_args(loss_core, 17)
-array_id = get_args(array_id, 18)
+exp_mode = get_args(exp_mode, 2)
+task_id_list = get_args(task_id_list, 3, type = "tuple")
+statistics_output_neurons = get_args(statistics_output_neurons, 4, type = "int")
+is_VAE = get_args(is_VAE, 5, type = "bool")
+VAE_beta = get_args(VAE_beta, 6, type = "float")
+lr = get_args(lr, 7, type = "float")
+batch_size_task = get_args(batch_size_task, 8, type = "int")
+pre_pooling_neurons = get_args(pre_pooling_neurons, 9, type = "int")
+num_context_neurons = get_args(num_context_neurons, 10, type = "int")
+statistics_pooling = get_args(statistics_pooling, 11)
+main_hidden_neurons = get_args(main_hidden_neurons, 12, "tuple")
+reg_amp = get_args(reg_amp, 13, type = "float")
+activation_gen = get_args(activation_gen, 14)
+activation_model = get_args(activation_model, 15)
+optim_mode = get_args(optim_mode, 16)
+is_uncertainty_net = get_args(is_uncertainty_net, 17, "bool")
+loss_core = get_args(loss_core, 18)
+array_id = get_args(array_id, 19)
 
 try:
     get_ipython().run_line_magic('matplotlib', 'inline')
@@ -408,9 +418,9 @@ struct_param_gen_base = [
 ]
 isParallel = False
 inspect_interval = 5
-save_interval = 200
-filename = variational_model_PATH + "/trained_models/{0}/Net_{1}_input_{2}_({3},{4})_stat_{5}_pre_{6}_pool_{7}_context_{8}_hid_{9}_batch_{10}_back_{11}_VAE_{12}_{13}_uncer_{14}_lr_{15}_reg_{16}_actgen_{17}_actmodel_{18}_struct_{19}_{20}_core_{21}_{22}_".format(
-    exp_id, task_id_list, input_size, num_train_tasks, num_test_tasks, statistics_output_neurons, pre_pooling_neurons, statistics_pooling, num_context_neurons, main_hidden_neurons, batch_size_task, num_backwards, is_VAE, VAE_beta, is_uncertainty_net, lr, reg_amp, activation_gen, activation_model, get_struct_str(struct_param_gen_base), optim_mode, loss_core, exp_id)
+save_interval = 100
+filename = variational_model_PATH + "/trained_models/{0}/Net_{1}_{2}_input_{3}_({4},{5})_stat_{6}_pre_{7}_pool_{8}_context_{9}_hid_{10}_batch_{11}_back_{12}_VAE_{13}_{14}_uncer_{15}_lr_{16}_reg_{17}_actgen_{18}_actmodel_{19}_struct_{20}_{21}_core_{22}_{23}_".format(
+    exp_id, exp_mode, task_id_list, input_size, num_train_tasks, num_test_tasks, statistics_output_neurons, pre_pooling_neurons, statistics_pooling, num_context_neurons, main_hidden_neurons, batch_size_task, num_backwards, is_VAE, VAE_beta, is_uncertainty_net, lr, reg_amp, activation_gen, activation_model, get_struct_str(struct_param_gen_base), optim_mode, loss_core, exp_id)
 make_dir(filename)
 print(filename)
 
@@ -440,7 +450,7 @@ if "tasks_train" not in locals():
 
 
 # Obtain nets:
-aux_coeff = 0.5
+aux_coeff = 0.3
 statistics_Net, generative_Net, generative_Net_logstd = get_nets(input_size = input_size, output_size = output_size, main_hidden_neurons = main_hidden_neurons,
                                           pre_pooling_neurons = pre_pooling_neurons, statistics_output_neurons = statistics_output_neurons, num_context_neurons = num_context_neurons,
                                           struct_param_pre = struct_param_pre,
@@ -530,7 +540,7 @@ record_data(data_record, [exp_id, tasks_train, tasks_test, task_id_list, task_se
              "struct_param_gen_base", "struct_param_pre", "struct_param_post", "statistics_pooling", "activation_gen", "activation_model"])
 
 
-# ## Pre-train the autoencoder for a while:
+# ## Pre-train the autoencoder for a few epochs:
 
 # In[ ]:
 
@@ -542,13 +552,13 @@ reg_amp_autoencoder = 1e-7
 reg_amp_latent = 1e-2
 
 (X_train_all, y_train_all), (X_test_all, y_test_all) = combine_dataset(tasks_train)
-optimizer = optim.Adam(autoencoder.parameters(), lr = lr_pre)
+optimizer_pre = optim.Adam(autoencoder.parameters(), lr = lr_pre)
 train_loader = data_utils.DataLoader(X_train_all.data, batch_size = batch_size, shuffle = True)
-early_stopping = Early_Stopping(patience = patience_pre)
+early_stopping_pre = Early_Stopping(patience = patience_pre)
 to_stop = False
 
-for epoch in range(30):
-    to_stop = train_epoch_pretrain(train_loader, X_test_all, autoencoder)
+for epoch in range(20):
+    to_stop = train_epoch_pretrain(train_loader, X_test_all, autoencoder, optimizer_pre)
     if to_stop:
         print("Early stopping at iteration {0}".format(i))
         break
@@ -754,11 +764,13 @@ for i in range(num_iter + 1):
             sys.stdout.flush()
         except:
             pass
-    if (i % save_interval == 0 and i > 0) or to_stop:
+    if i % save_interval == 0 or to_stop:
         record_data(info_dict, [master_model.model_dict, i], ["model_dict", "iter"])
         if is_autoencoder:
             record_data(info_dict, [autoencoder.state_dict()], ["autoencoder"])
-        pickle.dump(info_dict, open(filename + "info.p", "wb"))
+        make_dir(filename[:-1] + "/conv-meta_master-model")
+        torch.save(master_model.state_dict(), filename[:-1] + "/conv-meta_master-model_{0}.p".format(i))
+        torch.save(autoencoder.state_dict(), filename[:-1] + "/conv-meta_autoencoder_{0}.p".format(i))
     if to_stop:
         print("The training loss stops decreasing for {0} steps. Early stopping at {1}.".format(patience, i))
         break
@@ -774,4 +786,5 @@ if isplot:
     plt.show()
 print("completed")
 sys.stdout.flush()
+pickle.dump(info_dict, open(filename + "info.p", "wb"))
 

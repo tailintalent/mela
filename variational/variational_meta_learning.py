@@ -558,6 +558,8 @@ def get_rollout_pred_loss(conv_encoder, predictor, X_motion, y_motion, max_step,
     if isplot:
         plt.plot(step_list, loss_step_list)
         plt.show()
+        plt.clf()
+        plt.close()
     return step_list, loss_step_list
 
 
@@ -892,6 +894,8 @@ def plot_task_ensembles(tasks, statistics_Net, generative_Net, is_VAE = False, i
         plt.title(title)
     if isplot:
         plt.show()
+    plt.clf()
+    plt.close()
     return np.array(statistics_list), np.array(z_list)
 
 
@@ -991,6 +995,8 @@ def plot_individual_tasks(tasks, statistics_Net, generative_Net, generative_Net_
         ax.set_title(task_id)
         i += 1
     plt.show()
+    plt.clf()
+    plt.close()
     return [statistics_list]
 
 
@@ -1086,6 +1092,8 @@ def plot_individual_tasks_bounce(tasks, num_examples_show = 40, num_tasks_show =
                     ax.scatter(y_pred_ele[:,0], y_pred_ele[:,1], s = np.linspace(10, 20, len(y_ele[:,0])), marker = "o", color = "k", zorder = 2)
 
     plt.show()
+    plt.clf()
+    plt.close()
 
 
 def plot_few_shot_loss(master_model, tasks, isplot = True, autoencoder = None, **kwargs):
@@ -1145,6 +1153,8 @@ def plot_few_shot_loss(master_model, tasks, isplot = True, autoencoder = None, *
         ax.set_xlabel("number of shots")
         ax.set_ylabel("mse")
         plt.show()
+        plt.clf()
+        plt.close()
     return mse_list_whole
 
 
@@ -1171,6 +1181,8 @@ def plot_quick_learn_performance(models, tasks, epochs = 50, lr = 1e-3, batch_si
         ax.set_xlabel("number of epochs")
         ax.set_ylabel("mse")
         plt.show()
+        plt.clf()
+        plt.close()
     return mse_dict_whole
 
 
@@ -1202,6 +1214,8 @@ def plot_statistics_vs_z(z_list, statistics_list, mode = "corrcoef", title = Non
             ax.plot(z_list[:,i], statistics_list[:,j], color = COLOR_LIST[j], marker = ".", linestyle = 'None', alpha = 0.6, markersize = 2)
             ax.set_title("statistics vs. z_{0}".format(i))
     plt.show()
+    plt.clf()
+    plt.close()
     
     # Plot coefficient for linear regression:
     info = {}
@@ -1263,6 +1277,8 @@ def plot_data_record(data_record, idx = None, is_VAE = False):
                 ax.legend()
                 ax.set_title("Histogram for {0}:".format(key))
     plt.show()
+    plt.clf()
+    plt.close()
 
 
 # In[3]:
