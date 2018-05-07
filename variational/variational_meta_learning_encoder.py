@@ -434,11 +434,11 @@ if "tasks_train" not in locals():
             print("dataset loaded.")
         except:
             print("dataset do not exist. Create one")
-            tasks_train, tasks_test = get_tasks(task_id_list, num_train_tasks, num_test_tasks, task_settings = task_settings, is_cuda = is_cuda, forward_steps = list(range(1, max_forward_steps)))
+            tasks_train, tasks_test = get_tasks(task_id_list, num_train_tasks, num_test_tasks, task_settings = task_settings, is_cuda = is_cuda, forward_steps = list(range(1, max_forward_steps + 1)))
             dataset = {"tasks_train": tasks_train, "tasks_test": tasks_test}
     #         pickle.dump(dataset, open(filename + "data.p", "wb"))
     else:
-        tasks_train, tasks_test = get_tasks(task_id_list, num_train_tasks, num_test_tasks, task_settings = task_settings, is_cuda = is_cuda, forward_steps = list(range(1, max_forward_steps)))
+        tasks_train, tasks_test = get_tasks(task_id_list, num_train_tasks, num_test_tasks, task_settings = task_settings, is_cuda = is_cuda, forward_steps = list(range(1, max_forward_steps + 1)))
         dataset = {"tasks_train": tasks_train, "tasks_test": tasks_test}
     #     pickle.dump(dataset, open(filename + "data.p", "wb"))
         print("dataset saved.")
@@ -446,7 +446,7 @@ if "tasks_train" not in locals():
 
 # ## Prepare nets:
 
-# In[5]:
+# In[ ]:
 
 
 # Obtain nets:
