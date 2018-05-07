@@ -84,23 +84,24 @@ loss_core = "huber"
 array_id = "0"
 
 exp_id = get_args(exp_id, 1)
-task_id_list = get_args(task_id_list, 2, type = "tuple")
-statistics_output_neurons = get_args(statistics_output_neurons, 3, type = "int")
-is_VAE = get_args(is_VAE, 4, type = "bool")
-VAE_beta = get_args(VAE_beta, 5, type = "float")
-lr = get_args(lr, 6, type = "float")
-batch_size_task = get_args(batch_size_task, 7, type = "int")
-pre_pooling_neurons = get_args(pre_pooling_neurons, 8, type = "int")
-num_context_neurons = get_args(num_context_neurons, 9, type = "int")
-statistics_pooling = get_args(statistics_pooling, 10)
-main_hidden_neurons = get_args(main_hidden_neurons, 11, "tuple")
-reg_amp = get_args(reg_amp, 12, type = "float")
-activation_gen = get_args(activation_gen, 13)
-activation_model = get_args(activation_model, 14)
-optim_mode = get_args(optim_mode, 15)
-is_uncertainty_net = get_args(is_uncertainty_net, 16, "bool")
-loss_core = get_args(loss_core, 17)
-array_id = get_args(array_id, 18)
+exp_mode = get_args(exp_mode, 2)
+task_id_list = get_args(task_id_list, 3, type = "tuple")
+statistics_output_neurons = get_args(statistics_output_neurons, 4, type = "int")
+is_VAE = get_args(is_VAE, 5, type = "bool")
+VAE_beta = get_args(VAE_beta, 6, type = "float")
+lr = get_args(lr, 7, type = "float")
+batch_size_task = get_args(batch_size_task, 8, type = "int")
+pre_pooling_neurons = get_args(pre_pooling_neurons, 9, type = "int")
+num_context_neurons = get_args(num_context_neurons, 10, type = "int")
+statistics_pooling = get_args(statistics_pooling, 11)
+main_hidden_neurons = get_args(main_hidden_neurons, 12, "tuple")
+reg_amp = get_args(reg_amp, 13, type = "float")
+activation_gen = get_args(activation_gen, 14)
+activation_model = get_args(activation_model, 15)
+optim_mode = get_args(optim_mode, 16)
+is_uncertainty_net = get_args(is_uncertainty_net, 17, "bool")
+loss_core = get_args(loss_core, 18)
+array_id = get_args(array_id, 19)
 
 try:
     get_ipython().run_line_magic('matplotlib', 'inline')
@@ -133,8 +134,8 @@ struct_param_gen_base = [
         [60, "Simple_Layer", {}],
 ]
 isParallel = False
-inspect_interval = 100
-save_interval = 500
+inspect_interval = 50
+save_interval = 200
 filename = variational_model_PATH + "/trained_models/{0}/Net_{1}_{2}_input_{3}_({4},{5})_stat_{6}_pre_{7}_pool_{8}_context_{9}_hid_{10}_batch_{11}_back_{12}_VAE_{13}_{14}_uncer_{15}_lr_{16}_reg_{17}_actgen_{18}_actmodel_{19}_struct_{20}_{21}_core_{22}_{23}_".format(
     exp_id, exp_mode, task_id_list, input_size, num_train_tasks, num_test_tasks, statistics_output_neurons, pre_pooling_neurons, statistics_pooling, num_context_neurons, main_hidden_neurons, batch_size_task, num_backwards, is_VAE, VAE_beta, is_uncertainty_net, lr, reg_amp, activation_gen, activation_model, get_struct_str(struct_param_gen_base), optim_mode, loss_core, exp_id)
 make_dir(filename)

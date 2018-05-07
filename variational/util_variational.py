@@ -234,6 +234,9 @@ def get_env_data(
         if "ball_vmax" in kwargs:
             print("corrected ball_vmax: {0}".format(kwargs["ball_vmax"]))
             env_settings["ball_vmax"] = kwargs["ball_vmax"]
+        if "step_dt" in kwargs:
+            print("corrected step_dt: {0}".format(kwargs["step_dt"]))
+            env_settings["step_dt"] = kwargs["step_dt"]
         env = make_env("Breakout_Custom-v0", 1, 0, "", clip_rewards = False, env_settings = env_settings)()
         env.allow_early_resets = True
 

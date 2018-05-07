@@ -65,6 +65,11 @@ class Master_Model(nn.Module):
     def use_clone_net(self, clone_parameters = True):
         self.cloned_net = clone_net(self.generative_Net, clone_parameters = clone_parameters)
         self.use_net = "cloned"
+    
+    def get_clone_net(self, X = None, y = None, clone_parameters = True):
+        if X is not None or y is not None:
+            self.get_statistics(X, y)
+        return clone_net(self.generative_Net, clone_parameters = clone_parameters)
 
     def use_generative_net(self):
         self.use_net = "generative"
@@ -108,43 +113,49 @@ class Master_Model(nn.Module):
         return self.generative_Net.latent_param_quick_learn(X = X, y = y, validation_data = validation_data, 
                                                             epochs = epochs, batch_size = batch_size, lr = lr, optim_type = optim_type)
 
-    def clone_net_quick_learn(self, X, y, validation_data, batch_size = 128, epochs = 20, lr = 1e-3, optim_type = "adam"):
-        self.clone_net_optimizer = get_optimizer(optim_type = optim_type, lr = lr, parameters = self.cloned_net.parameters())
-        self.criterion = get_criterion("huber")
-        loss_list = []
-        X_test, y_test = validation_data
-        batch_size = min(batch_size, len(X))
-        if isinstance(X, Variable):
-            X = X.data
-        if isinstance(y, Variable):
-            y = y.data
+    def clone_net_quick_learn(self, X, y, validation_data, batch_size = 128, epochs = 40, lr = 1e-3, optim_type = "adam"):
+        mse_list, self.cloned_net = quick_learn(self.cloned_net, X, y, validation_data, loss_core = "huber", batch_size = batch_size, epochs = epochs, lr = lr, optim_type = optim_type)
+        return mse_list
 
-        dataset_train = data_utils.TensorDataset(X, y)
-        train_loader = data_utils.DataLoader(dataset_train, batch_size = batch_size, shuffle = True)
-        
-        for i in range(epochs):
-            for batch_idx, (X_batch, y_batch) in enumerate(train_loader):
-                X_batch = Variable(X_batch)
-                y_batch = Variable(y_batch)
-                if optim_type == "LBFGS":
-                    def closure():
-                        self.clone_net_optimizer.zero_grad()
-                        y_pred = self(X_batch)
-                        loss = self.criterion(y_pred, y_batch)
-                        loss.backward()
-                        return loss
-                    self.clone_net_optimizer.step(closure)
-                else:
-                    self.clone_net_optimizer.zero_grad()
-                    y_pred = self(X_batch)
-                    loss = self.criterion(y_pred, y_batch)
+
+def quick_learn(model, X, y, validation_data, loss_core = "huber", batch_size = 128, epochs = 40, lr = 1e-3, optim_type = "adam"):
+    model_train = deepcopy(model)
+    net_optimizer = get_optimizer(optim_type = optim_type, lr = lr, parameters = model_train.parameters())
+    criterion = get_criterion(loss_core)
+    mse_list = []
+    X_test, y_test = validation_data
+    batch_size = min(batch_size, len(X))
+    if isinstance(X, Variable):
+        X = X.data
+    if isinstance(y, Variable):
+        y = y.data
+
+    dataset_train = data_utils.TensorDataset(X, y)
+    train_loader = data_utils.DataLoader(dataset_train, batch_size = batch_size, shuffle = True)
+
+    for i in range(epochs):
+        for batch_idx, (X_batch, y_batch) in enumerate(train_loader):
+            X_batch = Variable(X_batch)
+            y_batch = Variable(y_batch)
+            if optim_type == "LBFGS":
+                def closure():
+                    net_optimizer.zero_grad()
+                    y_pred = model_train(X_batch)
+                    loss = criterion(y_pred, y_batch)
                     loss.backward()
-                    self.clone_net_optimizer.step()
-            y_pred_test = self(X_test)
-            loss = get_criterion("mse")(y_pred_test, y_test)
-            loss_list.append(loss.data[0])
-        loss_list = np.array(loss_list)
-        return loss_list
+                    return loss
+                net_optimizer.step(closure)
+            else:
+                net_optimizer.zero_grad()
+                y_pred = model_train(X_batch)
+                loss = criterion(y_pred, y_batch)
+                loss.backward()
+                net_optimizer.step()
+        y_pred_test = model_train(X_test)
+        mse_test = get_criterion("mse")(y_pred_test, y_test)
+        mse_list.append(mse_test.data[0])
+    mse_list = np.array(mse_list)
+    return mse_list, model_train
 
     
 def load_model_dict(model_dict, is_cuda = False):
@@ -614,6 +625,8 @@ def clone_net(generative_Net, layer_type = "Simple_Layer", clone_parameters = Tr
         else:
             W_init_list.append(None)
             b_init_list.append(None)
+    if generative_Net.last_layer_linear is True:
+        struct_param[-1][2]["activation"] = "linear"
     return Net(input_size = input_size, struct_param = struct_param, W_init_list = W_init_list, b_init_list = b_init_list, settings = generative_Net.settings_model)
 
 
@@ -1047,7 +1060,7 @@ def plot_individual_tasks_bounce(tasks, num_examples_show = 40, num_tasks_show =
         # Plotting:
         ax = fig.add_subplot(int(np.ceil(num_tasks_show / float(3))), 3, k + 1)
         for i in range(len(X_test_numpy)):
-            if i > num_examples_show:
+            if i >= num_examples_show:
                 break
             x_ele = X_test_numpy[i]
             y_ele = y_test_numpy[i]
@@ -1133,6 +1146,32 @@ def plot_few_shot_loss(master_model, tasks, isplot = True, autoencoder = None, *
         ax.set_ylabel("mse")
         plt.show()
     return mse_list_whole
+
+
+def plot_quick_learn_performance(models, tasks, epochs = 50, lr = 1e-3, batch_size = 128, isplot = True, scale = "log"):
+    if not isinstance(models, dict):
+        models = {"model_0": models}
+    mse_dict_whole = {model_key: [] for model_key in models.keys()}
+    for model_key, model in models.items():
+        for task_key, task in tasks.items():
+            ((X_train, y_train), (X_test, y_test)), _ = task
+            mse_list = quick_learn(model, X_train, y_train, validation_data = (X_test, y_test), loss_core = "huber", batch_size = batch_size, epochs = epochs, lr = lr, optim_type = "adam")
+            mse_dict_whole[model_key].append(mse_list)
+        mse_dict_whole[model_key] = np.array(mse_dict_whole[model_key])
+    epoch_list = list(range(1, epochs + 1))
+    if isplot:
+        import matplotlib.pylab as plt
+        plt.figure(figsize = (8,6))
+        for model_key, model in models.items():
+            plt.errorbar(epoch_list, mse_dict_whole[model_key].mean(0), mse_dict_whole[model_key].std(0), fmt = "o", label = model_key)
+        ax = plt.gca()
+        ax.legend()
+        if scale == "log":
+            ax.set_yscale("log")
+        ax.set_xlabel("number of epochs")
+        ax.set_ylabel("mse")
+        plt.show()
+    return mse_dict_whole
 
 
 def get_corrcoef(x, y):
