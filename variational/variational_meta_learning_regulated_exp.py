@@ -54,7 +54,8 @@ task_id_list = [
 "bounce-states",
 # "bounce-images",
 ]
-exp_id = "test"
+exp_id = "comparison"
+exp_mode = "meta"
 input_size = 6
 statistics_output_neurons = 8
 is_VAE = False
@@ -66,15 +67,15 @@ VAE_beta = 0.2
 output_size = 2
 lr = 5e-5
 num_train_tasks = 100
-num_test_tasks = 100
+num_test_tasks = 50
 batch_size_task = min(100, num_train_tasks)
 num_backwards = 1
 num_iter = 20000
-pre_pooling_neurons = 400
+pre_pooling_neurons = 200
 num_context_neurons = 0
 statistics_pooling = "max"
 main_hidden_neurons = (40, 40, 40)
-patience = 400
+patience = 300
 reg_amp = 1e-6
 activation_gen = "leakyRelu"
 activation_model = "leakyRelu"
@@ -102,7 +103,7 @@ loss_core = get_args(loss_core, 17)
 array_id = get_args(array_id, 18)
 
 try:
-    get_ipython().magic(u'matplotlib inline')
+    get_ipython().run_line_magic('matplotlib', 'inline')
     isplot = True
 except:
     isplot = False
@@ -132,10 +133,10 @@ struct_param_gen_base = [
         [60, "Simple_Layer", {}],
 ]
 isParallel = False
-inspect_interval = 50
+inspect_interval = 100
 save_interval = 500
-filename = variational_model_PATH + "/trained_models/{0}/Net_{1}_input_{2}_({3},{4})_stat_{5}_pre_{6}_pool_{7}_context_{8}_hid_{9}_batch_{10}_back_{11}_VAE_{12}_{13}_uncer_{14}_lr_{15}_reg_{16}_actgen_{17}_actmodel_{18}_struct_{19}_{20}_core_{21}_{22}_".format(
-    exp_id, task_id_list, input_size, num_train_tasks, num_test_tasks, statistics_output_neurons, pre_pooling_neurons, statistics_pooling, num_context_neurons, main_hidden_neurons, batch_size_task, num_backwards, is_VAE, VAE_beta, is_uncertainty_net, lr, reg_amp, activation_gen, activation_model, get_struct_str(struct_param_gen_base), optim_mode, loss_core, exp_id)
+filename = variational_model_PATH + "/trained_models/{0}/Net_{1}_{2}_input_{3}_({4},{5})_stat_{6}_pre_{7}_pool_{8}_context_{9}_hid_{10}_batch_{11}_back_{12}_VAE_{13}_{14}_uncer_{15}_lr_{16}_reg_{17}_actgen_{18}_actmodel_{19}_struct_{20}_{21}_core_{22}_{23}_".format(
+    exp_id, exp_mode, task_id_list, input_size, num_train_tasks, num_test_tasks, statistics_output_neurons, pre_pooling_neurons, statistics_pooling, num_context_neurons, main_hidden_neurons, batch_size_task, num_backwards, is_VAE, VAE_beta, is_uncertainty_net, lr, reg_amp, activation_gen, activation_model, get_struct_str(struct_param_gen_base), optim_mode, loss_core, exp_id)
 make_dir(filename)
 print(filename)
 
