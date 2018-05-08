@@ -35,6 +35,7 @@ seed = 1
 np.random.seed(seed)
 torch.manual_seed(seed)
 is_cuda = torch.cuda.is_available()
+print("is_cuda: {0}".format(is_cuda))
 
 
 # In[2]:
@@ -149,7 +150,7 @@ class Conv_Autoencoder(nn.Module):
         return self.encoder.get_regularization(source = source, mode = mode) +                 self.decoder.get_regularization(source = source, mode = mode) +                 self.enc_fully.get_regularization(source = source, mode = mode) +                 self.dec_fully.get_regularization(source = source, mode = mode)
 
 
-def train_epoch_pretrain(train_loader, X_test_all, autoencoder, optimizer_pre):
+def train_epoch_pretrain(train_loader, X_test_all, autoencoder, optimizer_pre, isplot = True):
     for batch_id, X_batch in enumerate(train_loader):
         X_batch = Variable(X_batch)
         optimizer_pre.zero_grad()
@@ -164,7 +165,7 @@ def train_epoch_pretrain(train_loader, X_test_all, autoencoder, optimizer_pre):
     loss_test = nn.MSELoss()(reconstruct_test, X_test_all)
     to_stop = early_stopping_pre.monitor(loss_test.data[0])
     print("epoch {0} \tloss_train: {1:.6f}\tloss_test: {2:.6f}\treg: {3:.6f}\treg_latent: {4:.6f}".format(epoch, loss_train.data[0], loss_test.data[0], reg.data[0], reg_latent.data[0]))
-    if epoch % 10 == 0:
+    if epoch % 10 == 0 and isplot:
         plot_matrices(X_batch[0].cpu().data.numpy(), images_per_row = 5)
         latent = forward(autoencoder.encode, X_batch)
         print("latent: {0}".format(latent.cpu().data.numpy()[0]))
@@ -173,7 +174,7 @@ def train_epoch_pretrain(train_loader, X_test_all, autoencoder, optimizer_pre):
     return to_stop
 
 
-def train_epoch_joint(motion_train_loader, X_motion_test, y_motion_test, conv_encoder, predictor, forward_steps, aux_coeff):
+def train_epoch_joint(motion_train_loader, X_motion_test, y_motion_test, conv_encoder, predictor, forward_steps, aux_coeff, isplot = True):
     for batch_id, (X_motion_batch, y_motion_batch) in enumerate(motion_train_loader):
         X_motion_batch = Variable(X_motion_batch)
         y_motion_batch = Variable(y_motion_batch)
@@ -190,7 +191,7 @@ def train_epoch_joint(motion_train_loader, X_motion_test, y_motion_test, conv_en
     to_stop = early_stopping_motion.monitor(loss_test.data[0])
     print("epoch {0}\tloss_train: {1:.6f}\tloss_test: {2:.6f}\tloss_aux: {3:.6f}\tloss_pred: {4:.6f}\treg_conv: {5:.6f}\treg_predictor: {6:.6f}".format(
         epoch, loss_train.data[0], loss_test.data[0], loss_auxiliary_test.data[0] * aux_coeff, loss_pred_recons_test.data[0], reg_conv.data[0], reg_predictor.data[0]))
-    if epoch % 10 == 0:
+    if epoch % 10 == 0 and isplot:
         print("epoch {0}:".format(epoch))
         plot_matrices(np.concatenate((X_motion_batch[0].cpu().data.numpy(), y_motion_batch[:, torch.LongTensor(np.array(forward_steps) - 1).cuda()][0].cpu().data.numpy())))
         plot_matrices(np.concatenate((forward(conv_encoder, X_motion_batch)[0].cpu().data.numpy(), pred_recons_batch[0].cpu().data.numpy())))
@@ -446,7 +447,7 @@ if "tasks_train" not in locals():
 
 # ## Prepare nets:
 
-# In[ ]:
+# In[9]:
 
 
 # Obtain nets:
@@ -558,7 +559,7 @@ early_stopping_pre = Early_Stopping(patience = patience_pre)
 to_stop = False
 
 for epoch in range(20):
-    to_stop = train_epoch_pretrain(train_loader, X_test_all, autoencoder, optimizer_pre)
+    to_stop = train_epoch_pretrain(train_loader, X_test_all, autoencoder, optimizer_pre, isplot = isplot)
     if to_stop:
         print("Early stopping at iteration {0}".format(i))
         break
