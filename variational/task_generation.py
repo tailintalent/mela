@@ -38,43 +38,48 @@ from AI_scientist.variational.variational_meta_learning import get_latent_model_
 # In[2]:
 
 
-# task_id = "C-tanh"
+task_id = "C-tanh"
 # task_id = "C-sin"
+# task_id = "bounce-states"
 
-# seed = 1
-# np.random.seed(seed)
-# torch.manual_seed(seed)
+seed = 1
 
-# if task_id == "C-sin":
-#     task_id_list = ["C-sin"]
-#     task_settings = {"test_size": 0.5, "num_examples": 20}
-#     num_train_tasks = 50
-#     num_test_tasks = 5000
-# elif task_id == "C-tanh":
-#     task_id_list = ["C-tanh"]
-#     task_settings = {"test_size": 0.5, "num_examples": 20}
-#     num_train_tasks = 50
-#     num_test_tasks = 5000
-# else:
-#     raise
-# tasks_train, tasks_test = get_tasks(task_id_list, num_train_tasks, num_test_tasks, task_settings = task_settings)
-# filename = dataset_PATH + task_id + ".p"
+np.random.seed(seed)
+torch.manual_seed(seed)
 
-# tasks = {"tasks_train": get_numpy_tasks(tasks_train),
-#          "tasks_test": get_numpy_tasks(tasks_test),
-#          }
-# pickle.dump(tasks, open(filename, "wb"))
+if task_id in ["C-sin", "C-tanh"]:
+    num_shots = 10
+    task_settings = {"test_size": 0.5, "num_examples": num_shots * 2}
+    num_train_tasks = 100
+    num_test_tasks = 20000
+elif task_id == "bounce-states":
+    num_shots = 10
+    task_settings = {"test_size": 0.5, "num_examples": 200}
+    num_train_tasks = 100
+    num_test_tasks = 100
+else:
+    raise
+tasks_train, tasks_test = get_tasks([task_id], num_train_tasks, num_test_tasks, task_settings = task_settings)
+filename = dataset_PATH + task_id + "_{0}-shot.p".format(num_shots)
+
+tasks = {"tasks_train": get_numpy_tasks(tasks_train),
+         "tasks_test": get_numpy_tasks(tasks_test),
+         }
+pickle.dump(tasks, open(filename, "wb"))
 
 
 # ## Load_tasks:
 
-# In[2]:
+# In[3]:
 
 
 task_id = "C-tanh"
 # task_id = "C-sin"
+# task_id = "bounce-states"
+if task_id == "C-tanh":
+    num_shots = 10
 
-filename = dataset_PATH + task_id + ".p"
+filename = dataset_PATH + task_id + "_{0}-shot.p".format(num_shots)
 tasks = pickle.load(open(filename, "rb"))
 
 tasks_train = tasks["tasks_train"]
