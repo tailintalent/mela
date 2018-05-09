@@ -328,3 +328,30 @@ def get_env_data(
             reflected_test = reflected_test[reflected_test == 0]
     return ((X_train, y_train), (X_test, y_test), (reflected_train, reflected_test)), info
 
+
+def get_torch_tasks(tasks, task_id, num_tasks = None, is_cuda = False):
+    tasks_dict = OrderedDict()
+    for i, task in enumerate(tasks):
+        if num_tasks is not None and i > num_tasks:
+            break
+        ((X_train_numpy, y_train_numpy), (X_test_numpy, y_test_numpy)), z_info = task
+        X_train = Variable(torch.FloatTensor(X_train_numpy), requires_grad = False)
+        y_train = Variable(torch.FloatTensor(y_train_numpy), requires_grad = False)
+        X_test = Variable(torch.FloatTensor(X_test_numpy), requires_grad = False)
+        y_test = Variable(torch.FloatTensor(y_test_numpy), requires_grad = False)
+        if is_cuda:
+            X_train = X_train.cuda()
+            y_train = y_train.cuda()
+            X_test = X_test.cuda()
+            y_test = y_test.cuda()
+        tasks_dict["{0}_{1}".format(task_id, i)] = [[[X_train, y_train], [X_test, y_test]], z_info]
+    return tasks_dict
+
+
+def get_numpy_tasks(tasks):
+    tasks_save = []
+    for task_key, task in tasks.items():
+        ((X_train, y_train), (X_test, y_test)), z_info = task
+        tasks_save.append([[[X_train.data.numpy(), y_train.data.numpy()], [X_test.data.numpy(), y_test.data.numpy()]], z_info])
+    return tasks_save
+

@@ -25,6 +25,7 @@ from AI_scientist.util import plot_matrices, make_dir, get_struct_str, get_args,
 from AI_scientist.settings.filepath import dataset_PATH
 from AI_scientist.pytorch.net import Net
 from AI_scientist.pytorch.util_pytorch import Loss_with_uncertainty
+from AI_scientist.variational.util_variational import get_numpy_tasks
 from AI_scientist.variational.variational_meta_learning import Master_Model, Statistics_Net, Generative_Net, load_model_dict, get_regulated_statistics
 from AI_scientist.variational.variational_meta_learning import VAE_Loss, sample_Gaussian, clone_net, get_nets, get_tasks, evaluate, get_reg, load_trained_models
 from AI_scientist.variational.variational_meta_learning import plot_task_ensembles, plot_individual_tasks, plot_statistics_vs_z, plot_data_record, get_corrcoef
@@ -34,41 +35,35 @@ from AI_scientist.variational.variational_meta_learning import get_latent_model_
 
 # ## Task generation:
 
-# In[5]:
+# In[2]:
 
 
-task_id = "C-tanh"
-task_id = "C-sin"
+# task_id = "C-tanh"
+# task_id = "C-sin"
 
-seed = 1
-np.random.seed(seed)
-torch.manual_seed(seed)
-def get_numpy_tasks(tasks):
-    tasks_save = []
-    for task_key, task in tasks.items():
-        ((X_train, y_train), (X_test, y_test)), z_info = task
-        tasks_save.append([[[X_train.data.numpy(), y_train.data.numpy()], [X_test.data.numpy(), y_test.data.numpy()]], z_info])
-    return tasks_save
+# seed = 1
+# np.random.seed(seed)
+# torch.manual_seed(seed)
 
-if task_id == "C-sin":
-    task_id_list = ["C-sin"]
-    task_settings = {"test_size": 0.5, "num_examples": 20}
-    num_train_tasks = 50
-    num_test_tasks = 5000
-elif task_id == "C-tanh":
-    task_id_list = ["C-tanh"]
-    task_settings = {"test_size": 0.5, "num_examples": 20}
-    num_train_tasks = 50
-    num_test_tasks = 5000
-else:
-    raise
-tasks_train, tasks_test = get_tasks(task_id_list, num_train_tasks, num_test_tasks, task_settings = task_settings)
-filename = dataset_PATH + task_id + ".p"
+# if task_id == "C-sin":
+#     task_id_list = ["C-sin"]
+#     task_settings = {"test_size": 0.5, "num_examples": 20}
+#     num_train_tasks = 50
+#     num_test_tasks = 5000
+# elif task_id == "C-tanh":
+#     task_id_list = ["C-tanh"]
+#     task_settings = {"test_size": 0.5, "num_examples": 20}
+#     num_train_tasks = 50
+#     num_test_tasks = 5000
+# else:
+#     raise
+# tasks_train, tasks_test = get_tasks(task_id_list, num_train_tasks, num_test_tasks, task_settings = task_settings)
+# filename = dataset_PATH + task_id + ".p"
 
-tasks = {"tasks_train": get_numpy_tasks(tasks_train),
-         "tasks_test": get_numpy_tasks(tasks_test),
-         }
-pickle.dump(tasks, open(filename, "wb"))
+# tasks = {"tasks_train": get_numpy_tasks(tasks_train),
+#          "tasks_test": get_numpy_tasks(tasks_test),
+#          }
+# pickle.dump(tasks, open(filename, "wb"))
 
 
 # ## Load_tasks:

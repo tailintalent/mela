@@ -25,6 +25,7 @@ from AI_scientist.util import plot_matrices, make_dir, get_struct_str, get_args,
 from AI_scientist.settings.filepath import variational_model_PATH, dataset_PATH
 from AI_scientist.pytorch.net import Net
 from AI_scientist.pytorch.util_pytorch import Loss_with_uncertainty
+from AI_scientist.variational.util_variational import get_torch_tasks
 from AI_scientist.variational.variational_meta_learning import Master_Model, Statistics_Net, Generative_Net, load_model_dict, get_regulated_statistics
 from AI_scientist.variational.variational_meta_learning import VAE_Loss, sample_Gaussian, clone_net, get_nets, get_tasks, evaluate, get_reg, load_trained_models
 from AI_scientist.variational.variational_meta_learning import plot_task_ensembles, plot_individual_tasks, plot_statistics_vs_z, plot_data_record, get_corrcoef
@@ -35,28 +36,6 @@ seed = 1
 np.random.seed(seed)
 torch.manual_seed(seed)
 is_cuda = torch.cuda.is_available()
-
-
-# In[2]:
-
-
-def get_torch_tasks(tasks, task_id, num_tasks = None, is_cuda = False):
-    tasks_dict = OrderedDict()
-    for i, task in enumerate(tasks):
-        if num_tasks is not None and i > num_tasks:
-            break
-        ((X_train_numpy, y_train_numpy), (X_test_numpy, y_test_numpy)), z_info = task
-        X_train = Variable(torch.FloatTensor(X_train_numpy), requires_grad = False)
-        y_train = Variable(torch.FloatTensor(y_train_numpy), requires_grad = False)
-        X_test = Variable(torch.FloatTensor(X_test_numpy), requires_grad = False)
-        y_test = Variable(torch.FloatTensor(y_test_numpy), requires_grad = False)
-        if is_cuda:
-            X_train = X_train.cuda()
-            y_train = y_train.cuda()
-            X_test = X_test.cuda()
-            y_test = y_test.cuda()
-        tasks_dict["{0}_{1}".format(task_id, i)] = [[[X_train, y_train], [X_test, y_test]], z_info]
-    return tasks_dict
 
 
 # ### Training:
