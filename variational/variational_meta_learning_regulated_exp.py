@@ -38,7 +38,7 @@ torch.manual_seed(seed)
 is_cuda = torch.cuda.is_available()
 
 
-# ### Training:
+# ## Training:
 
 # In[ ]:
 
@@ -61,12 +61,17 @@ task_id_list = [
 exp_id = "C-May8"
 exp_mode = "meta"
 input_size = 1
-statistics_output_neurons = 2
 is_VAE = False
 is_uncertainty_net = False
 is_regulated_net = False
 is_load_data = False
 VAE_beta = 0.2
+if task_id_list[0] == "C-sin":
+    statistics_output_neurons = 2
+elif task_id_list[0] == "C-tanh":
+    statistics_output_neurons = 4
+elif task_id_list[0] in ["bounce-states", "bounce-images"]:
+    statistics_output_neurons = 8
 
 output_size = 1
 lr = 5e-5
@@ -117,12 +122,7 @@ except:
 reg_dict = {"statistics_Net": {"weight": reg_amp, "bias": reg_amp},
             "generative_Net": {"weight": reg_amp, "bias": reg_amp, "W_gen": reg_amp, "b_gen": reg_amp}}
 task_settings = {
-    "zdim": 1,
-    "z_settings": ["Gaussian", (0, 1)],
-    "num_layers": 1,
-    "xlim": (-4, 4),
-    "activation": "softplus",
-    "input_size": input_size,
+    "xlim": (-5, 5),
     "num_examples": 20,
     "test_size": 0.5,
 }
