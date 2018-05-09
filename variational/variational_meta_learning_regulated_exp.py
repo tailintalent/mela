@@ -22,19 +22,41 @@ warnings.filterwarnings(action="ignore", module="scipy", message="^internal gels
 import sys, os
 sys.path.append(os.path.join(os.path.dirname("__file__"), '..', '..'))
 from AI_scientist.util import plot_matrices, make_dir, get_struct_str, get_args, Early_Stopping, record_data, manifold_embedding
-from AI_scientist.settings.filepath import variational_model_PATH
+from AI_scientist.settings.filepath import variational_model_PATH, dataset_PATH
 from AI_scientist.pytorch.net import Net
 from AI_scientist.pytorch.util_pytorch import Loss_with_uncertainty
 from AI_scientist.variational.variational_meta_learning import Master_Model, Statistics_Net, Generative_Net, load_model_dict, get_regulated_statistics
 from AI_scientist.variational.variational_meta_learning import VAE_Loss, sample_Gaussian, clone_net, get_nets, get_tasks, evaluate, get_reg, load_trained_models
 from AI_scientist.variational.variational_meta_learning import plot_task_ensembles, plot_individual_tasks, plot_statistics_vs_z, plot_data_record, get_corrcoef
-from AI_scientist.variational.variational_meta_learning import plot_few_shot_loss, plot_individual_tasks_bounce
+from AI_scientist.variational.variational_meta_learning import plot_few_shot_loss, plot_individual_tasks_bounce, plot_quick_learn_performance
 from AI_scientist.variational.variational_meta_learning import get_latent_model_data, get_polynomial_class, get_Legendre_class, get_master_function
 
 seed = 1
 np.random.seed(seed)
 torch.manual_seed(seed)
 is_cuda = torch.cuda.is_available()
+
+
+# In[2]:
+
+
+def get_torch_tasks(tasks, task_id, num_tasks = None, is_cuda = False):
+    tasks_dict = OrderedDict()
+    for i, task in enumerate(tasks):
+        if num_tasks is not None and i > num_tasks:
+            break
+        ((X_train_numpy, y_train_numpy), (X_test_numpy, y_test_numpy)), z_info = task
+        X_train = Variable(torch.FloatTensor(X_train_numpy), requires_grad = False)
+        y_train = Variable(torch.FloatTensor(y_train_numpy), requires_grad = False)
+        X_test = Variable(torch.FloatTensor(X_test_numpy), requires_grad = False)
+        y_test = Variable(torch.FloatTensor(y_test_numpy), requires_grad = False)
+        if is_cuda:
+            X_train = X_train.cuda()
+            y_train = y_train.cuda()
+            X_test = X_test.cuda()
+            y_test = y_test.cuda()
+        tasks_dict["{0}_{1}".format(task_id, i)] = [[[X_train, y_train], [X_test, y_test]], z_info]
+    return tasks_dict
 
 
 # ### Training:
@@ -51,30 +73,33 @@ task_id_list = [
 # "M-Gaussian",
 # "M-tanh",
 # "M-softplus",
-"bounce-states",
+# "C-sin",
+"C-tanh",
+# "bounce-states",
 # "bounce-images",
 ]
-exp_id = "comparison"
+
+exp_id = "C-May8"
 exp_mode = "meta"
-input_size = 6
-statistics_output_neurons = 8
+input_size = 1
+statistics_output_neurons = 2
 is_VAE = False
 is_uncertainty_net = False
 is_regulated_net = False
 is_load_data = False
 VAE_beta = 0.2
 
-output_size = 2
+output_size = 1
 lr = 5e-5
-num_train_tasks = 100
+num_train_tasks = 50
 num_test_tasks = 50
-batch_size_task = min(100, num_train_tasks)
+batch_size_task = min(50, num_train_tasks)
 num_backwards = 1
-num_iter = 20000
+num_iter = 10000
 pre_pooling_neurons = 200
 num_context_neurons = 0
 statistics_pooling = "max"
-main_hidden_neurons = (40, 40, 40)
+main_hidden_neurons = (40, 40)
 patience = 300
 reg_amp = 1e-6
 activation_gen = "leakyRelu"
@@ -119,18 +144,19 @@ task_settings = {
     "xlim": (-4, 4),
     "activation": "softplus",
     "input_size": input_size,
-    "num_examples": 2000,
+    "num_examples": 20,
+    "test_size": 0.5,
 }
 struct_param_pre = [
         [60, "Simple_Layer", {}],
-        [60, "Simple_Layer", {}],
+#         [60, "Simple_Layer", {}],
         [60, "Simple_Layer", {}],
         [pre_pooling_neurons, "Simple_Layer", {"activation": "linear"}],
     ]
 struct_param_post = None
 struct_param_gen_base = [
         [60, "Simple_Layer", {}],
-        [60, "Simple_Layer", {}],
+#         [60, "Simple_Layer", {}],
         [60, "Simple_Layer", {}],
 ]
 isParallel = False
@@ -140,6 +166,13 @@ filename = variational_model_PATH + "/trained_models/{0}/Net_{1}_{2}_input_{3}_(
     exp_id, exp_mode, task_id_list, input_size, num_train_tasks, num_test_tasks, statistics_output_neurons, pre_pooling_neurons, statistics_pooling, num_context_neurons, main_hidden_neurons, batch_size_task, num_backwards, is_VAE, VAE_beta, is_uncertainty_net, lr, reg_amp, activation_gen, activation_model, get_struct_str(struct_param_gen_base), optim_mode, loss_core, exp_id)
 make_dir(filename)
 print(filename)
+
+# Obtain tasks:
+assert len(task_id_list) == 1
+dataset_filename = dataset_PATH + task_id_list[0] + ".p"
+tasks = pickle.load(open(dataset_filename, "rb"))
+tasks_train = get_torch_tasks(tasks["tasks_train"], task_id_list[0], is_cuda = is_cuda)
+tasks_test = get_torch_tasks(tasks["tasks_test"], task_id_list[0], num_tasks = num_test_tasks, is_cuda = is_cuda)
 
 # Obtain nets:
 statistics_Net, generative_Net, generative_Net_logstd = get_nets(input_size = input_size, output_size = output_size, main_hidden_neurons = main_hidden_neurons,
@@ -184,25 +217,6 @@ else:
     else:
         criterion = loss_fun_core
 early_stopping = Early_Stopping(patience = patience)
-
-# Obtain tasks:
-if is_load_data:
-    try:
-        dataset = pickle.load(open(filename + "data.p", "rb"))
-        tasks_train = dataset["tasks_train"]
-        tasks_test = dataset["tasks_test"]
-        print("dataset loaded.")
-    except:
-        print("dataset do not exist. Create one")
-        tasks_train, tasks_test = get_tasks(task_id_list, num_train_tasks, num_test_tasks, task_settings = task_settings, is_cuda = is_cuda)
-        dataset = {"tasks_train": tasks_train, "tasks_test": tasks_test}
-        pickle.dump(dataset, open(filename + "data.p", "wb"))
-else:
-    tasks_train, tasks_test = get_tasks(task_id_list, num_train_tasks, num_test_tasks, task_settings = task_settings, is_cuda = is_cuda)
-    dataset = {"tasks_train": tasks_train, "tasks_test": tasks_test}
-    pickle.dump(dataset, open(filename + "data.p", "wb"))
-    print("dataset saved.")
-
 
 # Setting up recordings:
 all_keys = list(tasks_train.keys()) + list(tasks_test.keys())
@@ -333,6 +347,7 @@ for i in range(num_iter + 1):
         reg_train_list = [data_record["reg"][task_key][-1] for task_key in tasks_train]
         reg_test_list = [data_record["reg"][task_key][-1] for task_key in tasks_test]
         mse_few_shot = plot_few_shot_loss(master_model, tasks_test, isplot = isplot)
+        plot_quick_learn_performance(master_model, tasks_test)
         record_data(data_record, 
                     [np.mean(loss_train_list), np.median(loss_train_list), np.mean(reg_train_list), i,
                      np.mean(loss_test_list), np.median(loss_test_list), np.mean(reg_test_list),
