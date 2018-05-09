@@ -133,6 +133,9 @@ def quick_learn(model, X, y, validation_data, loss_core = "huber", batch_size = 
     dataset_train = data_utils.TensorDataset(X, y)
     train_loader = data_utils.DataLoader(dataset_train, batch_size = batch_size, shuffle = True)
 
+    y_pred_test = model_train(X_test)
+    mse_test = get_criterion("mse")(y_pred_test, y_test)
+    mse_list.append(mse_test.data[0])
     for i in range(epochs):
         for batch_idx, (X_batch, y_batch) in enumerate(train_loader):
             X_batch = Variable(X_batch)
@@ -629,7 +632,7 @@ def clone_net(generative_Net, layer_type = "Simple_Layer", clone_parameters = Tr
             b_init_list.append(None)
     if generative_Net.last_layer_linear is True:
         struct_param[-1][2]["activation"] = "linear"
-    return Net(input_size = input_size, struct_param = struct_param, W_init_list = W_init_list, b_init_list = b_init_list, settings = generative_Net.settings_model)
+    return Net(input_size = input_size, struct_param = struct_param, W_init_list = W_init_list, b_init_list = b_init_list, settings = generative_Net.settings_model, is_cuda = generative_Net.is_cuda)
 
 
 def get_nets(
@@ -726,10 +729,12 @@ def get_nets(
     return statistics_Net, generative_Net, generative_Net_logstd
 
 
-def get_tasks(task_id_list, num_train, num_test, task_settings = {}, is_cuda = False, **kwargs):
+def get_tasks(task_id_list, num_train, num_test, task_settings = {}, is_cuda = False, verbose = False, **kwargs):
     num_tasks = num_train + num_test
     tasks = {}
     for j in range(num_tasks):
+        if verbose:
+            print(j)
         task_id = np.random.choice(task_id_list)
         num_examples = task_settings["num_examples"] if "num_examples" in task_settings else 2000
         if task_id[:12] == "latent-linear":
@@ -743,6 +748,9 @@ def get_tasks(task_id_list, num_train, num_test, task_settings = {}, is_cuda = F
         elif task_id[:2] == "M-":
             task_mode = task_id.split("-")[1]
             task = get_master_function(task_settings["z_settings"], mode = task_mode, settings = task_settings, num_examples = num_examples, is_cuda = is_cuda,)
+        elif task_id[:2] == "C-":
+            task_mode = task_id.split("-")[1]
+            task = get_master_function_comparison(mode = task_mode, settings = task_settings, num_examples = num_examples, is_cuda = is_cuda,)
         elif task_id == "bounce-states":
             task = get_bouncing_states(data_format = "states", settings = task_settings, num_examples = num_examples, is_cuda = is_cuda, is_flatten = True, **kwargs)
         elif task_id == "bounce-images":
@@ -1097,7 +1105,7 @@ def plot_individual_tasks_bounce(tasks, num_examples_show = 40, num_tasks_show =
 
 
 def plot_few_shot_loss(master_model, tasks, isplot = True, autoencoder = None, **kwargs):
-    num_shots_list = [20, 30, 40, 50, 70, 100, 200, 300, 500, 1000]
+    num_shots_list = [10, 20, 30, 40, 50, 70, 100, 200, 300, 500, 1000]
     mse_list_whole = []
     for task_key, task in tasks.items():
         mse_list = []
@@ -1115,6 +1123,8 @@ def plot_few_shot_loss(master_model, tasks, isplot = True, autoencoder = None, *
             ((X_train, y_train), (X_test, y_test)), _ = task
         is_cuda = X_train.is_cuda
         for num_shots in num_shots_list:
+            if num_shots > len(X_train):
+                continue
             idx = torch.LongTensor(np.random.choice(range(len(X_train)), num_shots, replace = False))
             if is_cuda:
                 idx = idx.cuda()
@@ -1135,10 +1145,11 @@ def plot_few_shot_loss(master_model, tasks, isplot = True, autoencoder = None, *
     mse_list_whole = np.array(mse_list_whole)
     mse_mean = mse_list_whole.mean(0)
     mse_std = mse_list_whole.std(0)
+    print(mse_mean)
     if isplot:
         import matplotlib.pylab as plt
         plt.figure(figsize = (8,6))
-        plt.errorbar(num_shots_list, mse_mean, mse_std, fmt = "o")
+        plt.errorbar(num_shots_list[:len(mse_mean)], mse_mean, mse_std, fmt = "o")
         ax = plt.gca()
         ax.set_xscale("log")
         ax.set_xlabel("number of shots")
@@ -1146,7 +1157,7 @@ def plot_few_shot_loss(master_model, tasks, isplot = True, autoencoder = None, *
         plt.show()
 
         plt.figure(figsize = (8,6))
-        plt.errorbar(num_shots_list, mse_mean, mse_std, fmt = "o")
+        plt.errorbar(num_shots_list[:len(mse_mean)], mse_mean, mse_std, fmt = "o")
         ax = plt.gca()
         ax.set_xscale("log")
         ax.set_yscale("log")
@@ -1158,17 +1169,21 @@ def plot_few_shot_loss(master_model, tasks, isplot = True, autoencoder = None, *
     return mse_list_whole
 
 
-def plot_quick_learn_performance(models, tasks, epochs = 50, lr = 1e-3, batch_size = 128, isplot = True, scale = "log"):
+def plot_quick_learn_performance(models, tasks, epochs = 50, lr = 1e-3, batch_size = 128, isplot = True, scale = "normal"):
     if not isinstance(models, dict):
         models = {"model_0": models}
     mse_dict_whole = {model_key: [] for model_key in models.keys()}
     for model_key, model in models.items():
         for task_key, task in tasks.items():
             ((X_train, y_train), (X_test, y_test)), _ = task
-            mse_list = quick_learn(model, X_train, y_train, validation_data = (X_test, y_test), loss_core = "huber", batch_size = batch_size, epochs = epochs, lr = lr, optim_type = "adam")
+            if model.__class__.__name__ == "Master_Model":
+                model_core = model.get_clone_net(X_train, y_train)
+            else:
+                model_core = model
+            mse_list = quick_learn(model_core, X_train, y_train, validation_data = (X_test, y_test), loss_core = "huber", batch_size = batch_size, epochs = epochs, lr = lr, optim_type = "adam")[0]
             mse_dict_whole[model_key].append(mse_list)
         mse_dict_whole[model_key] = np.array(mse_dict_whole[model_key])
-    epoch_list = list(range(1, epochs + 1))
+    epoch_list = list(range(epochs + 1))
     if isplot:
         import matplotlib.pylab as plt
         plt.figure(figsize = (8,6))
@@ -1408,6 +1423,57 @@ def get_Legendre_class(
             X_test = X_test.cuda()
             y_test = y_test.cuda()
     return ((X_train, y_train), (X_test, y_test)), {"z": z}
+
+
+def get_master_function_comparison(
+    z_settings = {},
+    mode = "sin",
+    settings = {},
+    num_examples = 1000,
+    isTorch = True,
+    is_cuda = False,
+    ):
+    test_size = settings["test_size"] if "test_size" in settings else 0.5
+    z_info = {}
+    if mode == "sin":
+        amp_range = [0.1, 5.0]
+        phase_range = [0, np.pi]
+        xlim = (-5,5)
+
+        X = np.random.uniform(xlim[0], xlim[1], [num_examples, 1])
+        amp = np.random.uniform(amp_range[0], amp_range[1])
+        phase = np.random.uniform(phase_range[0], phase_range[1])
+        y = amp * np.sin(X - phase)
+        z_info["z"] = np.array([amp, phase])
+    elif mode == "tanh":
+        freq_range = [0.5, 1.5]
+        x0_range = [-1, 1]
+        amp_range = [1, 2]
+        const_range = [-1, 1]
+        xlim = (-5,5)
+        
+        X = np.random.uniform(xlim[0], xlim[1], [num_examples, 1])
+        freq = np.random.uniform(freq_range[0], freq_range[1])
+        x0 = np.random.uniform(x0_range[0], x0_range[1])
+        amp = np.random.uniform(amp_range[0], amp_range[1])
+        const = np.random.uniform(const_range[0], const_range[1])
+        y = np.tanh((X - x0) * freq) * amp + const
+        z_info["z"] = np.array([const, amp, freq, x0])
+    else:
+        raise
+
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = test_size)
+    if isTorch:
+        X_train = Variable(torch.FloatTensor(X_train), requires_grad = False)
+        y_train = Variable(torch.FloatTensor(y_train), requires_grad = False)
+        X_test = Variable(torch.FloatTensor(X_test), requires_grad = False)
+        y_test = Variable(torch.FloatTensor(y_test), requires_grad = False)
+        if is_cuda:
+            X_train = X_train.cuda()
+            y_train = y_train.cuda()
+            X_test = X_test.cuda()
+            y_test = y_test.cuda()
+    return ((X_train, y_train), (X_test, y_test)), z_info
 
 
 def get_master_function(
