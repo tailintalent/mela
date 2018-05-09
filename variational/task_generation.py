@@ -34,10 +34,11 @@ from AI_scientist.variational.variational_meta_learning import get_latent_model_
 
 # ## Task generation:
 
-# In[3]:
+# In[5]:
 
 
 task_id = "C-tanh"
+task_id = "C-sin"
 
 seed = 1
 np.random.seed(seed)
@@ -53,14 +54,15 @@ if task_id == "C-sin":
     task_id_list = ["C-sin"]
     task_settings = {"test_size": 0.5, "num_examples": 20}
     num_train_tasks = 50
-    num_test_tasks = 50
+    num_test_tasks = 5000
 elif task_id == "C-tanh":
     task_id_list = ["C-tanh"]
     task_settings = {"test_size": 0.5, "num_examples": 20}
     num_train_tasks = 50
     num_test_tasks = 5000
 else:
-    raise:
+    raise
+tasks_train, tasks_test = get_tasks(task_id_list, num_train_tasks, num_test_tasks, task_settings = task_settings)
 filename = dataset_PATH + task_id + ".p"
 
 tasks = {"tasks_train": get_numpy_tasks(tasks_train),
@@ -96,7 +98,7 @@ len(tasks_train)
 len(tasks_test)
 
 
-# In[14]:
+# In[ ]:
 
 
 # Train with training tasks:
