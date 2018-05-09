@@ -86,13 +86,13 @@ tasks_train = tasks["tasks_train"]
 tasks_test = tasks["tasks_test"]
 
 
-# In[3]:
+# In[4]:
 
 
 len(tasks_train)
 
 
-# In[4]:
+# In[5]:
 
 
 len(tasks_test)
@@ -107,10 +107,10 @@ for task in tasks_train:
    
 
 # Validate with testing tasks:
-# This is only for tanh/sin tasks, where we partition the 5000 testing tasks into 100 x evaluations, and each evaluation has 50 testing tasks:
+# This is only for tanh/sin tasks, where we partition the 20000 testing tasks into 200 x evaluations, and each evaluation has 100 testing tasks:
 loss_list = []
 for i in range(100):
-    tasks_test_iter = tasks_test[i * 50 : (i + 1) * 50]
+    tasks_test_iter = tasks_test[i * 100 : (i + 1) * 100]
     # Perform evaluation, accumulate the loss:
     loss = evaluate(tasks_test_iter)
     loss_list.append(loss)
