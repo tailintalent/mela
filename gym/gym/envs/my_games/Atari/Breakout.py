@@ -18,6 +18,15 @@ def get_item(item_source, k, num_items):
     return item
 
 
+def update_accum_dict(accum_dict, new_dict):
+    for key, item in new_dict.items():
+        assert isinstance(item, list)
+        if key not in accum_dict:
+            accum_dict[key] = item
+        else:
+            accum_dict[key] += item
+
+
 class PhysicalObject(object):
     def __init__(self, x, y, vx, vy, shape = None):
         self.x = x
@@ -184,11 +193,20 @@ class Ball(PhysicalObject):
         self.grayscale = 255
 
 
-    def step(self, dt, **kwargs):
+    def step(self, dt, boundary_lines = None, **kwargs):
         self.x_last = deepcopy(self.x)
         self.y_last = deepcopy(self.y)
         self.x += self.vx * dt
         self.y += self.vy * dt
+        is_cross = False
+        if boundary_lines is not None:
+            for boundary_line in boundary_lines:
+                trajectory_line = ((self.x_last, self.y_last), (self.x, self.y))
+                is_cross, _, _ = check_cross(boundary_line, trajectory_line, None)
+                if is_cross:
+                    is_cross = True
+                    break
+        return is_cross
 
 
     def get_inside_idx(self, screen_height, screen_width):
@@ -253,7 +271,7 @@ def check_cross(boundary_line, trajectory_line, v):
         else:
             is_cross = False
 
-    if is_cross:
+    if is_cross and v is not None:
         # Get reflected point:
         coeff = -2 * (A2 * x2 + B2 * y2 - C2) / float(A2 ** 2 + B2 ** 2)
         x_refl = A2 * coeff + x2
@@ -288,6 +306,7 @@ class Breakout_Custom(gym.Env):
         self.dt = env_settings["dt"] if "dt" in env_settings else 0.25
         self.physics_list = get_physics(env_settings["physics"] if "physics" in env_settings else [], dt = self.dt)
         self.boundaries = env_settings["boundaries"] if "boundaries" in env_settings else "default"
+        self.boundary_lines = env_settings["boundary_lines"] if "boundary_lines" in env_settings else None
 
         self.brick_y_range = env_settings["brick_y_range"] if "brick_y_range" in env_settings else (self.height * 0.27, self.height * 0.44)
         self.middle_unbreakable_bricks = env_settings["middle_unbreakable_bricks"] if "middle_unbreakable_bricks" in env_settings else False
@@ -486,8 +505,6 @@ class Breakout_Custom(gym.Env):
                         Object.x, Object.y = point_refl
                         Object.vx, Object.vy = v_refl
                         bouncing_info[name].append(i + 1)
-            if len(bouncing_info[name]) == 0:
-                bouncing_info[name].append(0)
             bouncing_info[name] == sorted(bouncing_info[name])
         return bouncing_info
 
@@ -531,12 +548,15 @@ class Breakout_Custom(gym.Env):
             self._reset_ball()
             self.game_started = True
 
+        ball_bouncing_accum = {ball_name: [] for ball_name in self.ball_dict}
+        paddle_bouncing_accum = {paddle_name: [] for paddle_name in self.paddle_dict}
+        is_cross_accum = {ball_name: False for ball_name in self.ball_dict}
         for i in range(int(self.step_dt / self.dt)):
             # Physics:
             for physics in self.physics_list:
                 physics.exert(self.ball_dict, paddle_dict = self.paddle_dict)
-            for ball in self.ball_dict.values():
-                ball.step(self.dt)
+            for ball_name, ball in self.ball_dict.items():
+                is_cross_accum[ball_name] = is_cross_accum[ball_name] | ball.step(self.dt, self.boundary_lines)
 
             # Paddle operation on the ball:
             if i == 0:
@@ -546,6 +566,8 @@ class Breakout_Custom(gym.Env):
 
             # Check collision of the ball with bricks:
             reward, ball_bouncing_info, paddle_bouncing_info = self.check_collision()
+            update_accum_dict(ball_bouncing_accum, ball_bouncing_info)
+            update_accum_dict(paddle_bouncing_accum, paddle_bouncing_info)
             reward_list.append(reward)
             num_dead_balls = self.check_dead()
             num_dead_balls_list.append(num_dead_balls)
@@ -567,8 +589,9 @@ class Breakout_Custom(gym.Env):
         else:
             done = False
         info = {}
-        info["ball_bouncing_info"] = ball_bouncing_info
-        info["paddle_bouncing_info"] = paddle_bouncing_info
+        info["ball_bouncing_info"] = ball_bouncing_accum
+        info["paddle_bouncing_info"] = paddle_bouncing_accum
+        info["is_cross"] = is_cross_accum
 
         # Obtain other information (not used by the agent):
         for info_content in self.info_contents:
