@@ -752,7 +752,7 @@ def get_tasks(task_id_list, num_train, num_test, task_settings = {}, is_cuda = F
             task_mode = task_id.split("-")[1]
             task = get_master_function_comparison(mode = task_mode, settings = task_settings, num_examples = num_examples, is_cuda = is_cuda,)
         elif task_id == "bounce-states":
-            task = get_bouncing_states(data_format = "states", settings = task_settings, num_examples = num_examples, is_cuda = is_cuda, is_flatten = True, **kwargs)
+            task = get_bouncing_states(data_format = "states", settings = task_settings, num_examples = num_examples, is_cuda = is_cuda, is_flatten = False, bounce_focus = True, **kwargs)
         elif task_id == "bounce-images":
             task = get_bouncing_states(data_format = "images", settings = task_settings, num_examples = num_examples, is_cuda = is_cuda, **kwargs)
         else:
@@ -932,12 +932,12 @@ def plot_individual_tasks(tasks, statistics_Net, generative_Net, generative_Net_
         input_size = X_test.size(1)
         chosen_dim = np.random.choice(range(input_size))
         if is_VAE:
-            statistics, statistics_logvar = statistics_Net(torch.cat([X_test, y_test], 1))
+            statistics, statistics_logvar = statistics_Net(torch.cat([X_train, y_train], 1))
         else:
             if generative_Net_logstd is None:
-                statistics = statistics_Net(torch.cat([X_test, y_test], 1))
+                statistics = statistics_Net(torch.cat([X_train, y_train], 1))
             else:
-                statistics, statistics_logvar = statistics_Net(torch.cat([X_test, y_test], 1))
+                statistics, statistics_logvar = statistics_Net(torch.cat([X_train, y_train], 1))
         if X_test.is_cuda:
             statistics_cpu = statistics.cpu()
         else:
@@ -952,22 +952,14 @@ def plot_individual_tasks(tasks, statistics_Net, generative_Net, generative_Net_
                 if is_regulated_net:
                     statistics = get_regulated_statistics(generative_Net, statistics)
                 y_pred = generative_Net(X_linspace, statistics)
-                if X_test.is_cuda:
-                    X_linspace_cpu = X_linspace.cpu()
-                    y_pred_cpu = y_pred.cpu()
-                else:
-                    X_linspace_cpu = X_linspace
-                    y_pred_cpu = y_pred
-                ax.plot(X_linspace_cpu.data.numpy()[:, chosen_dim], y_pred_cpu.data.numpy().squeeze(), "-r", markersize = 3, label = "pred")
+                X_linspace_numpy, y_pred_numpy = to_np_array(X_linspace, y_pred)
+                ax.plot(X_linspace_numpy[:, chosen_dim], y_pred_numpy.squeeze(), "-r", markersize = 3, label = "pred")
                 if generative_Net_logstd is not None:
                     if is_regulated_net:
                         statistics_logvar = get_regulated_statistics(generative_Net_logstd, statistics_logvar)
                     y_pred_std = torch.exp(generative_Net_logstd(X_linspace, statistics_logvar))
-                    if X_test.is_cuda:
-                        y_pred_std_cpu = y_pred_std.cpu()
-                    else:
-                        y_pred_std_cpu = y_pred_std
-                    ax.fill_between(X_linspace_cpu.data.numpy()[:, chosen_dim], (y_pred_cpu - y_pred_std_cpu).data.numpy().squeeze(), (y_pred_cpu + y_pred_std_cpu).data.numpy().squeeze(), color = "r", alpha = 0.3)
+                    y_pred_std_numpy = to_np_array(y_pred_std)
+                    ax.fill_between(X_linspace_numpy[:, chosen_dim], (y_pred_numpy - y_pred_std_numpy).squeeze(), (y_pred_numpy + y_pred_std_numpy).squeeze(), color = "r", alpha = 0.3)
 #             else:
 #                 if is_regulated_net:
 #                     statistics = get_regulated_statistics(generative_Net, statistics)
@@ -1012,7 +1004,7 @@ def plot_individual_tasks_bounce(tasks, num_examples_show = 40, num_tasks_show =
     import matplotlib.pylab as plt
     fig = plt.figure(figsize = (25, num_tasks_show / 3 * 8))
     plt.subplots_adjust(hspace = 0.4)
-    tasks_key_show = np.random.choice(list(tasks.keys()), num_tasks_show)
+    tasks_key_show = np.random.choice(list(tasks.keys()), min(num_tasks_show, len(tasks)), replace = False)
     for k, task_key in enumerate(tasks_key_show):
         if autoencoder is not None:
             forward_steps = kwargs["forward_steps"]
@@ -1047,7 +1039,7 @@ def plot_individual_tasks_bounce(tasks, num_examples_show = 40, num_tasks_show =
             if num_shots is None:
                 statistics = master_model.statistics_Net.forward_inputs(X_train, y_train)
             else:
-                idx = torch.LongTensor(np.random.choice(range(len(X_train)), num_shots, replace = False))
+                idx = torch.LongTensor(np.random.choice(range(len(X_train)), min(len(X_train), num_shots), replace = False))
                 if is_cuda:
                     idx = idx.cuda()
                 statistics = master_model.statistics_Net.forward_inputs(X_train[idx], y_train[idx])
@@ -1145,7 +1137,6 @@ def plot_few_shot_loss(master_model, tasks, isplot = True, autoencoder = None, *
     mse_list_whole = np.array(mse_list_whole)
     mse_mean = mse_list_whole.mean(0)
     mse_std = mse_list_whole.std(0)
-    print(mse_mean)
     if isplot:
         import matplotlib.pylab as plt
         plt.figure(figsize = (8,6))
