@@ -12,6 +12,9 @@ from torch.autograd import Variable
 from sklearn.model_selection import train_test_split
 from collections import OrderedDict
 import time
+import sys, os
+sys.path.append(os.path.join(os.path.dirname("__file__"), '..', '..'))
+from AI_scientist.util import sort_two_lists
 
 
 # In[2]:
@@ -54,6 +57,8 @@ def get_task(
     width = None,
     test_size = 0.2,
     bounce_focus = False,
+    normalize = True,
+    translation = None,
     ):  
     """Obtain training and testing data from a trajectory"""
     X = []
@@ -85,8 +90,8 @@ def get_task(
             others.append(trajectory[i + time_steps : i + time_steps + max_forward_steps - 1])
         else:
             others.append([1])
-    X = np.array(X) * 0.025  # scale the states to between (0,1)
-    y = np.array(y) * 0.025
+    X = np.array(X)
+    y = np.array(y)
     reflect = np.array(reflect)
     others = np.array(others)
     if obs_array is not None:
@@ -107,6 +112,16 @@ def get_task(
         X = X[reflect.astype(bool)]
         y = y[reflect.astype(bool)]
         reflect = reflect[reflect.astype(bool)]
+    
+    if translation is not None:
+        X[..., 0] = X[..., 0] + translation[0]
+        y[..., 0] = y[..., 0] + translation[0]
+        X[..., 1] = X[..., 1] + translation[1]
+        y[..., 1] = y[..., 1] + translation[1]
+    if normalize:
+        # scale the states to between (0,1):
+        X = X * 0.025  
+        y = y * 0.025
 
     # Randomly select num_examples of examples:
     chosen_idx = np.random.choice(range(len(X)), size = num_examples, replace = False)
@@ -222,10 +237,12 @@ def get_env_data(
 
         # Obtain settings from kwargs:
         time_steps = kwargs["time_steps"] if "time_steps" in kwargs else 3
-        forward_steps = kwargs["forward_steps"] if "forward_steps" in kwargs else 1
+        forward_steps = kwargs["forward_steps"] if "forward_steps" in kwargs else [1]
         episode_length = kwargs["episode_length"] if "episode_length" in kwargs else 30
         is_flatten = kwargs["is_flatten"] if "is_flatten" in kwargs else False
-        bounce_focus = kwargs["bounce_focus"] if "bounce_focus" in kwargs else False
+        bounce_focus = kwargs["bounce_focus"] if "bounce_focus" in kwargs else True
+        normalize = kwargs["normalize"] if "normalize" in kwargs else True
+        translation = kwargs["translation"] if "translation" in kwargs else None
         render = kwargs["render"] if "render" in kwargs else False
         env_name_split = env_name.split("-")
         if "nobounce" in env_name_split:
@@ -338,6 +355,8 @@ def get_env_data(
                      width = width,
                      test_size = test_size,
                      bounce_focus = bounce_focus,
+                     normalize = normalize,
+                     translation = translation,
                     )
 
         if "nobounce" in env_name_split:
@@ -393,4 +412,25 @@ def get_numpy_tasks(tasks):
         ((X_train, y_train), (X_test, y_test)), z_info = task
         tasks_save.append([[[X_train.data.numpy(), y_train.data.numpy()], [X_test.data.numpy(), y_test.data.numpy()]], z_info])
     return tasks_save
+
+
+def sort_datapoints(X, y, score, top = None):
+    combined_data = torch.cat([X, y], 1)
+    isTorch = False
+    if isinstance(score, Variable):
+        score = score.squeeze().data.numpy()
+    if isinstance(X, Variable):
+        isTorch = True
+    score_sorted, data_sorted = sort_two_lists(score, combined_data.data.numpy(), reverse = True)
+    data_sorted = np.array(data_sorted)
+    score_sorted = np.array(score_sorted)
+    X_sorted, y_sorted = data_sorted[:,:X.size(1)], data_sorted[:,X.size(1):]
+    if top is not None:
+        X_sorted = X_sorted[:top]
+        y_sorted = y_sorted[:top]
+        score_sorted = score_sorted[:top]
+    if isTorch:
+        X_sorted = Variable(torch.FloatTensor(X_sorted)).contiguous().view(-1,X.size(1))
+        y_sorted = Variable(torch.FloatTensor(y_sorted)).contiguous().view(-1,y.size(1))
+    return X_sorted, y_sorted, score_sorted
 

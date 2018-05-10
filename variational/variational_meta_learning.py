@@ -26,6 +26,7 @@ from AI_scientist.settings.a2c_env_settings import ENV_SETTINGS_CHOICE
 from AI_scientist.settings.global_param import COLOR_LIST
 from AI_scientist.pytorch.net import Net
 from AI_scientist.pytorch.util_pytorch import get_activation, get_optimizer, get_criterion, Loss_Fun, to_Variable, to_np_array
+from AI_scientist.variational.util_variational import sort_datapoints
 
 
 # In[2]:
@@ -752,7 +753,7 @@ def get_tasks(task_id_list, num_train, num_test, task_settings = {}, is_cuda = F
             task_mode = task_id.split("-")[1]
             task = get_master_function_comparison(mode = task_mode, settings = task_settings, num_examples = num_examples, is_cuda = is_cuda,)
         elif task_id == "bounce-states":
-            task = get_bouncing_states(data_format = "states", settings = task_settings, num_examples = num_examples, is_cuda = is_cuda, is_flatten = False, bounce_focus = True, **kwargs)
+            task = get_bouncing_states(data_format = "states", settings = task_settings, num_examples = num_examples, is_cuda = is_cuda, **kwargs)
         elif task_id == "bounce-images":
             task = get_bouncing_states(data_format = "images", settings = task_settings, num_examples = num_examples, is_cuda = is_cuda, **kwargs)
         else:
@@ -1096,7 +1097,7 @@ def plot_individual_tasks_bounce(tasks, num_examples_show = 40, num_tasks_show =
     plt.close()
 
 
-def plot_few_shot_loss(master_model, tasks, isplot = True, autoencoder = None, **kwargs):
+def plot_few_shot_loss(master_model, tasks, isplot = True, autoencoder = None, min_shots = None, **kwargs):
     num_shots_list = [10, 20, 30, 40, 50, 70, 100, 200, 300, 500, 1000]
     mse_list_whole = []
     for task_key, task in tasks.items():
@@ -1117,6 +1118,9 @@ def plot_few_shot_loss(master_model, tasks, isplot = True, autoencoder = None, *
         for num_shots in num_shots_list:
             if num_shots > len(X_train):
                 continue
+            if min_shots is not None:
+                if num_shots < min_shots:
+                    continue
             idx = torch.LongTensor(np.random.choice(range(len(X_train)), num_shots, replace = False))
             if is_cuda:
                 idx = idx.cuda()

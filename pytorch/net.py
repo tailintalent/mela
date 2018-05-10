@@ -23,8 +23,8 @@ from AI_scientist.pytorch.util_pytorch import softmax, get_activation, get_crite
 # In[2]:
 
 
-def load_model_dict(model_dict, is_cuda = False):
-    net_type = model_dict["net_type"]
+def load_model_dict_net(model_dict, is_cuda = False):
+    net_type = model_dict["type"]
     if net_type == "Net":
         return Net(input_size = model_dict["input_size"],
                    struct_param = model_dict["struct_param"],
@@ -378,7 +378,7 @@ class Net(nn.Module):
 
 
     def load_model_dict(self, model_dict):
-        new_net = load_model_dict(model_dict, is_cuda = self.is_cuda)
+        new_net = load_model_dict_net(model_dict, is_cuda = self.is_cuda)
         self.__dict__.update(new_net.__dict__)
 
 
