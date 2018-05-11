@@ -24,8 +24,6 @@ dataset_PATH = "data/"
 filename = dataset_PATH + task_id + "_{0}-shot.p".format(num_shots)
 tasks = pickle.load(open(filename, "rb"))
 
-myT = tasks["tasks_train"]
-
 def packageAndGetTask(myT):
 
     #We will split the 100 up into 4 batches of 25 each.
@@ -34,6 +32,8 @@ def packageAndGetTask(myT):
     complete_la_a = np.array([[]])
     complete_in_b = np.array([[]])
     complete_la_b = np.array([[]])
+    print("Array: ")
+    print(len(myT))
     #Best way to do this is just do this for all. 
     for i in xrange(0,100):
         #This is the count for which example.
@@ -74,7 +74,10 @@ def packageAndGetTask(myT):
 
     #return (complete_in_a, complete_in_b, complete_la_a, complete_la_b)
 
-allTasks = packageAndGetTask(myT)
+trainTasks = packageAndGetTask(tasks["tasks_train"])
+
+testTasks = packageAndGetTask(tasks["tasks_test"])
+
 
 
 
@@ -156,7 +159,7 @@ class DataGenerator(object):
         else:
             raise ValueError('Unrecognized data source')
 
-    def generateTanhData(self,i):
+    def generateTanhData(self,i,train=False,batch_size=2):
         #print(allTasks)
         #print("Done with tanh data")
         #print(allTasks[0].shape)
@@ -165,14 +168,22 @@ class DataGenerator(object):
 
         #print(allTasks[0].shape)
         #print(allTasks[1].shape)
+        print("Train:", train, i, batch_size)
+        print(trainTasks[0].shape)
 
-        inputs = allTasks[0][(i*25):(i*25+25),:,:]
+        if train:
+            inputs = trainTasks[0][(i*batch_size):(i*batch_size+batch_size),:,:]
 
-        labels = allTasks[1][(i*25):(i*25+25),:,:]
+            labels = trainTasks[1][(i*batch_size):(i*batch_size+batch_size),:,:]
+        else:
+            batch_size = 100
+            i = 0 
 
+            inputs = testTasks[0][(i*batch_size):(i*batch_size+batch_size),:,:]
+
+            labels = testTasks[1][(i*batch_size):(i*batch_size+batch_size),:,:]
         return (inputs,labels,0,0)
-        os.exit()
-        
+
 
         #return 
 
@@ -267,6 +278,12 @@ class DataGenerator(object):
     def generate_sinusoid_batch(self, train=True, input_idx=None):
         # Note train arg is not used (but it is used for omniglot method.
         # input_idx is used during qualitative testing --the number of examples used for the grad update
+        if train == False:
+            #If this is not training, then test it over 200 values. 
+            #print("Batch size: " , self.batch_size)
+            orBat = self.batch_size
+            self.batch_size = 200
+
         amp = np.random.uniform(self.amp_range[0], self.amp_range[1], [self.batch_size])
         phase = np.random.uniform(self.phase_range[0], self.phase_range[1], [self.batch_size])
 
@@ -283,10 +300,27 @@ class DataGenerator(object):
             ## John Peurifoy 5/7, switched sin for tanh
             #outputs[func] = amp[func] * np.sin(init_inputs[func]-phase[func])
             outputs[func] = amp[func] * np.sin(init_inputs[func]-phase[func])
+        
+        if train == False:
+            #If this is not training, then test it over 200 values. 
+            #print("Batch size: " , self.batch_size)
+            self.batch_size = orBat
+
         return init_inputs, outputs, amp, phase
 
     def generate_tanh_batch(self, train=True, input_idx=None):
-        #return self.generateTanhData(random.randint(0,3))
+
+        if train == False:
+            #If this is not training, then test it over 200 values. 
+            #print("Batch size: " , self.batch_size)
+
+            #Uncomment these to just make the data.
+
+            orBat = self.batch_size
+            self.batch_size = 200
+        #(self,i,test=False,batch_size=2):
+        #print("Batch size: ", self.batch_size)
+        #return self.generateTanhData(random.randint(0,100),train=train,batch_size=self.batch_size)
 
         # Note train arg is not used (but it is used for omniglot method.
         # input_idx is used during qualitative testing --the number of examples used for the grad update
@@ -305,6 +339,10 @@ class DataGenerator(object):
             ## John Peurifoy 5/7, switched sin for tanh
             outputs[func] = amp[func] * np.tanh(freq[func]*(init_inputs[func]-phase[func]))+offset[func]
             #outputs[func] = amp[func] * np.sin(init_inputs[func]-phase[func])
+        if train == False:
+            #If this is not training, then test it over 200 values. 
+            #print("Batch size: " , self.batch_size)
+            self.batch_size = orBat
         #print("My tanh batch: " , init_inputs)
         #print("outputs:",outputs)
         #print init_inputs.shape

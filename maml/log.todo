@@ -88,26 +88,86 @@ Training:
 
 
 
-python main.py --datasource=tanh --logdir=logs/tanh8/ --metatrain_iterations=70000 --norm=None --update_batch_size=10
+python main.py --datasource=tanh --logdir=logs/tanh11/ --metatrain_iterations=70000 --norm=None --update_batch_size=10 --meta_batch_size 1
+
+To use data from the file:
+    comment out line 289 in the genegerate_tanh_batch method. 
+
+import tensorflow as tf
+
+total_loss = meansq #or other loss calcuation
+l1_regularizer = tf.contrib.layers.l1_regularizer(
+   scale=0.005, scope=None
+)
+weights = tf.trainable_variables() # all vars of your graph
+regularization_penalty = tf.contrib.layers.apply_regularization(l1_regularizer, weights)
+
+regularized_loss = total_loss + regularization_penalty # this loss needs to be minimized
+train_step = tf.train.GradientDescentOptimizer(0.05).minimize(regularized_loss)
+
+
+
+python main.py --datasource=tanh --logdir=logs/tanh12/ --metatrain_iterations=70000 --norm=None --update_batch_size=10 --meta_batch_size 1
+
+python main.py --datasource=tanh --logdir=logs/tanh13/ --metatrain_iterations=70000 --norm=None --update_batch_size=10 --meta_batch_size 1
 
 
 
 
+Hyperparameter search:
+  python main.py --datasource=tanh --logdir=logs/tanh14/ --metatrain_iterations=70000 --norm=None --update_batch_size=10 --meta_batch_size 1
 
+  Regularization: True
+    .005 scale
+  meta_lr: 1e-4
+  update_batch_size: 10
+  update_lr: 1e-4
+  num_updates: 5
+  nonlinearity: relu
+  datasource: tanh
+      Generate new data each time. 
+      self.amp_range = config.get('amp_range', [1.0, 2.0])
+      self.phase_range = config.get('phase_range', [-1.0, 1.0]) # std, mu
+      self.freq_range = config.get('freq_range', [.5, 1.5])
+      self.offs_range = config.get('offs_range', [1.0, -1.1])
+      self.input_range = config.get('input_range', [-5.0, 5.0])
 
+  results:
+      500: 1.43,1.47
+      Iteration 5500: 0.438142, 0.376652
+      Validation results: 0.557242965698, 0.551853713989
+      Iteration 18500: 0.517733, 0.295403
+      Validation results: 0.56623249054, 0.562619247437
 
+Seeing loss for tanh:
 
+Try 1:
+  python main.py --datasource=tanh --logdir=logs/tanhh2/ --metatrain_iterations=50000 --norm=None --update_batch_size=2
 
+  Regularization: True
+    .005 scale
+  meta_lr: 1e-5
+  update_batch_size: 10
+  update_lr: 1e-5
+  num_updates: 5
+  nonlinearity: relu
+  datasource: tanh
+      Generate new data each time. 
+      self.generate = self.generate_tanh_batch
+      self.amp_range = config.get('amp_range', [1.0, 2.0])
+      self.phase_range = config.get('phase_range', [-1.0, 1.0]) # std, mu
+      self.freq_range = config.get('freq_range', [.5, 1.5])
+      self.offs_range = config.get('offs_range', [1.0, -1.1])
+      self.input_range = config.get('input_range', [-5.0, 5.0])
+      self.dim_input = 1
+      self.dim_output = 1
+ results:
+     tanh_results_1
 
+Why are the validation results 1/25 of the test data?
 
-
-
-
-
-
-
-
-
+Try 2 (now using the generated data):
+  python main.py --datasource=tanh --logdir=logs/tanhh2/ --metatrain_iterations=50000 --norm=None --update_batch_size=2
 
 
 

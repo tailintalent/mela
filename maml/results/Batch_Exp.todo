@@ -1,0 +1,185 @@
+Try2:
+  
+  python main.py --datasource=sinusoid --logdir=logs/sin15/ --metatrain_iterations=70000 --norm=None --update_batch_size=10 --meta_batch_size 1
+
+  Regularization: True
+    .005 scale
+  meta_lr: 1e-4
+  update_batch_size: 10
+  update_lr: 1e-4
+  num_updates: 5
+  nonlinearity: relu
+  datasource: sin
+      Generate new data each time. 
+      self.generate = self.generate_sinusoid_batch
+      self.amp_range = config.get('amp_range', [0.1, 5.0])
+      self.phase_range = config.get('phase_range', [0, np.pi])
+      self.input_range = config.get('input_range', [-5.0, 5.0])
+      self.dim_input = 1
+      self.dim_output = 1
+
+  results:
+    Ideal results: Paper showed loss at 3 before training, .5 loss after training.
+    Our results: show greater than 3 in the beginning, then specific task improves to about .5 
+    1st:
+      Iteration 500: 1.20927, 0.814277
+Validation results: 4.65824890137, 4.4204586792
+Iteration 2500: 0.262676, 0.487826
+Validation results: 4.06062103271, 4.0858001709
+Iteration 4500: 5.38945, 7.63306
+Validation results: 3.61905212402, 3.3858984375
+Iteration 6500: 8.07882, 5.73454
+Validation results: 3.89681610107, 3.61299804688
+Iteration 7500: 7.09908, 7.54362
+Validation results: 3.58023620605, 3.6458984375
+Iteration 9000: 8.95706, 7.98438
+Saving...
+Validation results: 3.21788482666, 3.23116638184
+Iteration 11000: 12.2105, 11.3963
+Saving...
+Validation results: 3.30238067627, 3.31477020264
+Iteration 12500: 0.594834, 0.426498
+Validation results: 3.6094329834, 3.43381164551
+Iteration 16500: 1.97102, 1.75377
+Validation results: 3.26921386719, 3.46200714111
+Iteration 18500: 3.82023, 3.45326
+Validation results: 3.1596484375, 3.16770172119
+Iteration 19500: 0.399197, 0.500312
+Validation results: 3.10519470215, 3.10121765137
+
+Try2:
+  
+  python main.py --datasource=sinusoid --logdir=logs/sin18/ --metatrain_iterations=70000 --norm=None --update_batch_size=10 --meta_batch_size 1
+
+  Regularization: True
+    .005 scale
+  meta_lr: 1e-5
+  update_batch_size: 10
+  update_lr: 1e-5
+  num_updates: 5
+  nonlinearity: relu
+  datasource: sin
+      Generate new data each time. 
+      self.generate = self.generate_sinusoid_batch
+      self.amp_range = config.get('amp_range', [0.1, 5.0])
+      self.phase_range = config.get('phase_range', [0, np.pi])
+      self.input_range = config.get('input_range', [-5.0, 5.0])
+      self.dim_input = 1
+      self.dim_output = 1
+
+  results:
+      results/try2_run_results.csv     
+
+Try3 (paper results):
+
+  python main.py --datasource=sinusoid --logdir=logs/sine2/ --metatrain_iterations=70000 --norm=None --update_batch_size=10
+
+  Regularization: True
+    .005 scale
+  meta_lr: 1e-5
+  update_batch_size: 10
+  update_lr: 1e-5
+  num_updates: 5
+  nonlinearity: relu
+  datasource: sin
+      Generate new data each time. 
+      self.generate = self.generate_sinusoid_batch
+      self.amp_range = config.get('amp_range', [0.1, 5.0])
+      self.phase_range = config.get('phase_range', [0, np.pi])
+      self.input_range = config.get('input_range', [-5.0, 5.0])
+      self.dim_input = 1
+      self.dim_output = 1
+
+  Note:
+      This is different than the paper in the regularization, and learning rate. I mainly just want to see what the loss goes to and if these results make any sense. I know that they should go pretty low. 
+  Results:
+      try3_run_results.csv
+      For some reasont he test error is a lot different than the other error? I assume that i neeed to divide it by 25. Yup, this is accurate.
+
+Try4 (paper results):
+
+  python main.py --datasource=sinusoid --logdir=logs/sine3/ --metatrain_iterations=70000 --norm=None --update_batch_size=5
+
+  Regularization: True
+    .005 scale
+  meta_lr: 1e-5
+  update_batch_size: 10
+  update_lr: 1e-5
+  num_updates: 5
+  nonlinearity: relu
+  datasource: sin
+      Generate new data each time. 
+      self.generate = self.generate_sinusoid_batch
+      self.amp_range = config.get('amp_range', [0.1, 5.0])
+      self.phase_range = config.get('phase_range', [0, np.pi])
+      self.input_range = config.get('input_range', [-5.0, 5.0])
+      self.dim_input = 1
+      self.dim_output = 1
+
+  Note:
+      This is different than the paper in the regularization, and learning rate. I mainly just want to see what the loss goes to and if these results make any sense. I know that they should go pretty low. 
+  Results:
+      try4_run_results.csv
+      For some reasont he test error is a lot different than the other error? I assume that i neeed to divide it by 25. Yup, this is accurate.
+
+Try5 (paper results):
+
+  python main.py --datasource=sinusoid --logdir=logs/sine4/ --metatrain_iterations=50000 --norm=None --update_batch_size=2
+
+  Regularization: True
+    .005 scale
+  meta_lr: 1e-5
+  update_batch_size: 10
+  update_lr: 1e-5
+  num_updates: 5
+  nonlinearity: relu
+  datasource: sin
+      Generate new data each time. 
+      self.generate = self.generate_sinusoid_batch
+      self.amp_range = config.get('amp_range', [0.1, 5.0])
+      self.phase_range = config.get('phase_range', [0, np.pi])
+      self.input_range = config.get('input_range', [-5.0, 5.0])
+      self.dim_input = 1
+      self.dim_output = 1
+
+  Note:
+      This is different than the paper in the regularization, and learning rate. I mainly just want to see what the loss goes to and if these results make any sense. I know that they should go pretty low. 
+  Results:
+      try5_run_results.csv
+      For some reasont he test error is a lot different than the other error? I assume that i neeed to divide it by 25. Yup, this is accurate.
+
+
+Try6 (long run):
+
+  python main.py --datasource=sinusoid --logdir=logs/sine4/ --metatrain_iterations=50000 --norm=None --update_batch_size=2
+
+  Regularization: True
+    .005 scale
+  meta_lr: 1e-5
+  update_batch_size: 10
+  update_lr: 1e-5
+  num_updates: 5
+  nonlinearity: relu
+  datasource: sin
+      Generate new data each time. 
+      self.generate = self.generate_sinusoid_batch
+      self.amp_range = config.get('amp_range', [0.1, 5.0])
+      self.phase_range = config.get('phase_range', [0, np.pi])
+      self.input_range = config.get('input_range', [-5.0, 5.0])
+      self.dim_input = 1
+      self.dim_output = 1
+
+  Note:
+      This is different than the paper in the regularization, and learning rate. I mainly just want to see what the loss goes to and if these results make any sense. I know that they should go pretty low. 
+  Results:
+      try6_run_results.csv
+      For some reasont he test error is a lot different than the other error? I assume that i neeed to divide it by 25. Yup, this is accurate.
+
+Conclusion:
+  Batch    Error Rate
+  1       3.7
+  2        .17
+  5        .16
+  10       .17
+
+  This model necesarily needs at LEAST 2 for the batch size. Though this certainly doesn't seem immediately obvious
