@@ -1,0 +1,118 @@
+This is the log for the maml code
+
+python main.py --datasource=sinusoid --logdir=logs/sine3/ --metatrain_iterations=70000 --norm=None --update_batch_size=10
+  
+  THis runs a basic training iteration
+
+Sin:
+    python main.py --datasource=sinusoid --logdir=logs/sine2/ --metatrain_iterations=10000 --norm=None --update_batch_size=10 --test_set=True --train=False
+
+
+Tanh To train:
+  python main.py --datasource=tanh --logdir=logs/tanh2 --metatrain_iterations=5000 --norm=None --update_batch_size=10
+Tanh to test:
+  python main.py --datasource=tanh --logdir=logs/tanh --metatrain_iterations=5000 --norm=None --update_batch_size=10 --test_set=True --train=False
+
+
+Points for (K = 10):
+Mean validation accuracy/loss, stddev, and confidence intervals
+(array([ 0.00197234,  0.0018456 ,  0.001764  ,  0.00168665,  0.00161332,
+        0.00154376,  0.00147775,  0.00141508,  0.00135557,  0.00129904,
+        0.00124532], dtype=float32), array([ 0.00062628,  0.00060223,  0.00057633,  0.00055312,  0.00053229,
+        0.00051356,  0.00049669,  0.00048145,  0.00046763,  0.00045507,
+        0.0004436 ], dtype=float32), array([  5.01129216e-05,   4.81886927e-05,   4.61163945e-05,
+         4.42588534e-05,   4.25918588e-05,   4.10932626e-05,
+         3.97431504e-05,   3.85237363e-05,   3.74183255e-05,
+         3.64132393e-05,   3.54952062e-05], dtype=float32))
+
+
+0.00197234,  0.0018456 ,  0.001764  ,  0.00168665,  0.00161332,
+        0.00154376,  0.00147775,  0.00141508,  0.00135557,  0.00129904,
+        0.00124532
+
+
+        1  0.00197234
+2  0.0018456
+3  0.001764
+4  0.00168665
+5  0.00161332
+6  0.00154376
+7  0.00147775
+8  0.00141508
+9  0.00135557
+10  0.00129904
+11  0.00124532
+
+Training:
+
+  (25, 20, 1)
+(25, 20, 1)
+(25, 20, 1)
+(25, 20, 1)
+(25, 20, 1)
+(25, 20, 1)
+(25, 20, 1)
+(25, 20, 1)
+(25, 20, 1)
+(25, 20, 1)
+(25, 20, 1)
+(25, 20, 1)
+(25, 20, 1)
+(25, 20, 1)
+(25, 20, 1)
+(25, 20, 1)
+(25, 20, 1)
+(25, 20, 1)
+(25, 20, 1)
+(25, 20, 1)
+(25, 20, 1)
+(25, 20, 1)
+(25, 20, 1)
+(25, 20, 1)
+(25, 20, 1)
+(25, 20, 1)
+(25, 20, 1)
+(25, 20, 1)
+(25, 20, 1)
+(25, 20, 1)
+(25, 20, 1)
+(25, 20, 1)
+(25, 20, 1)
+(25, 20, 1)
+(25, 20, 1)
+(25, 20, 1)
+(25, 20, 1)
+(25, 20, 1)
+(25, 20, 1)
+
+
+
+
+python main.py --datasource=tanh --logdir=logs/tanh8/ --metatrain_iterations=70000 --norm=None --update_batch_size=10
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

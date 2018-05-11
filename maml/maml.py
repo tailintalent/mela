@@ -28,6 +28,11 @@ class MAML:
             self.loss_func = mse
             self.forward = self.forward_fc
             self.construct_weights = self.construct_fc_weights
+        elif FLAGS.datasource == 'tanh':
+            self.dim_hidden = [40, 40]
+            self.loss_func = mse
+            self.forward = self.forward_fc
+            self.construct_weights = self.construct_fc_weights
         elif FLAGS.datasource == 'omniglot' or FLAGS.datasource == 'miniimagenet':
             self.loss_func = xent
             self.classification = True
@@ -83,7 +88,7 @@ class MAML:
 
                 if self.classification:
                     task_accuraciesb = []
-
+                # Half is propogated through to get the general gradient. 
                 task_outputa = self.forward(inputa, weights, reuse=reuse)  # only reuse on the first iter
                 task_lossa = self.loss_func(task_outputa, labela)
 
@@ -91,13 +96,17 @@ class MAML:
                 if FLAGS.stop_grad:
                     grads = [tf.stop_gradient(grad) for grad in grads]
                 gradients = dict(zip(weights.keys(), grads))
+                
                 fast_weights = dict(zip(weights.keys(), [weights[key] - self.update_lr*gradients[key] for key in weights.keys()]))
+                #Half is propogated through to get the specific gradient. 
                 output = self.forward(inputb, fast_weights, reuse=True)
                 task_outputbs.append(output)
                 task_lossesb.append(self.loss_func(output, labelb))
+                print("Num updates is: " , num_updates)
 
                 for j in range(num_updates - 1):
                     loss = self.loss_func(self.forward(inputa, fast_weights, reuse=True), labela)
+                    print(loss)
                     grads = tf.gradients(loss, list(fast_weights.values()))
                     if FLAGS.stop_grad:
                         grads = [tf.stop_gradient(grad) for grad in grads]

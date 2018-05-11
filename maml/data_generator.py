@@ -9,6 +9,75 @@ from utils import get_images
 
 FLAGS = flags.FLAGS
 
+#For now, do preloading.
+import pickle
+
+task_id = "C-tanh"
+# task_id = "C-sin"
+# task_id = "bounce-states"
+if task_id == "C-tanh":
+    num_shots = 10
+
+dataset_PATH = "data/"
+
+
+filename = dataset_PATH + task_id + "_{0}-shot.p".format(num_shots)
+tasks = pickle.load(open(filename, "rb"))
+
+myT = tasks["tasks_train"]
+
+def packageAndGetTask(myT):
+
+    #We will split the 100 up into 4 batches of 25 each.
+    first_batch = myT#[0:25]
+    complete_in_a = np.array([[]])
+    complete_la_a = np.array([[]])
+    complete_in_b = np.array([[]])
+    complete_la_b = np.array([[]])
+    #Best way to do this is just do this for all. 
+    for i in xrange(0,100):
+        #This is the count for which example.
+        #i = 0 
+        print("I:",i)
+        #The first zero removes the dictionary of the true values.
+        inputa = first_batch[i][0][0][0].ravel()
+        print("inputa: " , inputa)
+        labela = first_batch[i][0][0][1].ravel()
+        inputb = first_batch[i][0][1][0].ravel()
+        labelb = first_batch[i][0][1][1].ravel()
+        if i == 0:
+            complete_in_a = inputa
+            complete_la_a = labela
+            complete_in_b = inputb
+            complete_la_b = labelb
+        else:
+            complete_in_a = np.vstack((complete_in_a,inputa))
+            complete_la_a = np.vstack((complete_la_a,labela))
+            complete_in_b = np.vstack((complete_in_b,inputb))
+            complete_la_b = np.vstack((complete_la_b,labelb))
+    complete_in_a = complete_in_a.reshape(-1,10,1)
+    complete_in_b = complete_in_b.reshape(-1,10,1)
+    complete_la_a = complete_la_a.reshape(-1,10,1)
+    complete_la_b = complete_la_b.reshape(-1,10,1)
+    print("final complete:")
+    print(complete_in_a)
+    print(complete_in_a.shape)
+    print("inputa: " , inputa)
+    print("inputb: " , inputb)
+    print('ina',complete_in_a)
+    print('inb',complete_in_b)
+    print('laa',complete_la_a)
+    print('lab',complete_la_b)
+    print(complete_in_a.shape)
+    #Package for generates. So stack the ins and stack the outs
+    return (np.hstack((complete_in_a,complete_in_b)),np.hstack((complete_la_a,complete_la_b)))
+
+    #return (complete_in_a, complete_in_b, complete_la_a, complete_la_b)
+
+allTasks = packageAndGetTask(myT)
+
+
+
 class DataGenerator(object):
     """
     Data Generator capable of generating batches of sinusoid or Omniglot data.
@@ -24,7 +93,16 @@ class DataGenerator(object):
         self.num_samples_per_class = num_samples_per_class
         self.num_classes = 1  # by default 1 (only relevant for classification problems)
 
-        if FLAGS.datasource == 'sinusoid':
+        if FLAGS.datasource == 'tanh':
+            self.generate = self.generate_tanh_batch
+            self.amp_range = config.get('amp_range', [1.0, 2.0])
+            self.phase_range = config.get('phase_range', [-1.0, 1.0]) # std, mu
+            self.freq_range = config.get('freq_range', [.5, 1.5])
+            self.offs_range = config.get('offs_range', [1.0, -1.1])
+            self.input_range = config.get('input_range', [-5.0, 5.0])
+            self.dim_input = 1
+            self.dim_output = 1
+        elif FLAGS.datasource == 'sinusoid':
             self.generate = self.generate_sinusoid_batch
             self.amp_range = config.get('amp_range', [0.1, 5.0])
             self.phase_range = config.get('phase_range', [0, np.pi])
@@ -77,6 +155,33 @@ class DataGenerator(object):
             self.rotations = config.get('rotations', [0])
         else:
             raise ValueError('Unrecognized data source')
+
+    def generateTanhData(self,i):
+        #print(allTasks)
+        #print("Done with tanh data")
+        #print(allTasks[0].shape)
+
+        #Selecting the ith data
+
+        #print(allTasks[0].shape)
+        #print(allTasks[1].shape)
+
+        inputs = allTasks[0][(i*25):(i*25+25),:,:]
+
+        labels = allTasks[1][(i*25):(i*25+25),:,:]
+
+        return (inputs,labels,0,0)
+        os.exit()
+        
+
+        #return 
+
+        input_a = allTasks[0][(i*25):(i*25+25),:,:]
+        input_b = allTasks[1][(i*25):(i*25+25),:,:]
+        label_a = allTasks[2][(i*25):(i*25+25),:,:]
+        label_b = allTasks[3][(i*25):(i*25+25),:,:]
+
+        return input_a, input_b, label_a, label_b
 
 
     def make_data_tensor(self, train=True):
@@ -164,11 +269,43 @@ class DataGenerator(object):
         # input_idx is used during qualitative testing --the number of examples used for the grad update
         amp = np.random.uniform(self.amp_range[0], self.amp_range[1], [self.batch_size])
         phase = np.random.uniform(self.phase_range[0], self.phase_range[1], [self.batch_size])
+
+
+
         outputs = np.zeros([self.batch_size, self.num_samples_per_class, self.dim_output])
         init_inputs = np.zeros([self.batch_size, self.num_samples_per_class, self.dim_input])
         for func in range(self.batch_size):
             init_inputs[func] = np.random.uniform(self.input_range[0], self.input_range[1], [self.num_samples_per_class, 1])
             if input_idx is not None:
                 init_inputs[:,input_idx:,0] = np.linspace(self.input_range[0], self.input_range[1], num=self.num_samples_per_class-input_idx, retstep=False)
+
+
+            ## John Peurifoy 5/7, switched sin for tanh
+            #outputs[func] = amp[func] * np.sin(init_inputs[func]-phase[func])
             outputs[func] = amp[func] * np.sin(init_inputs[func]-phase[func])
+        return init_inputs, outputs, amp, phase
+
+    def generate_tanh_batch(self, train=True, input_idx=None):
+        #return self.generateTanhData(random.randint(0,3))
+
+        # Note train arg is not used (but it is used for omniglot method.
+        # input_idx is used during qualitative testing --the number of examples used for the grad update
+        amp = np.random.uniform(self.amp_range[0], self.amp_range[1], [self.batch_size])
+        phase = np.random.uniform(self.phase_range[0], self.phase_range[1], [self.batch_size])
+        freq = np.random.uniform(self.freq_range[0], self.freq_range[1], [self.batch_size])
+        offset = np.random.uniform(self.offs_range[0], self.offs_range[1], [self.batch_size])
+
+        outputs = np.zeros([self.batch_size, self.num_samples_per_class, self.dim_output])
+        init_inputs = np.zeros([self.batch_size, self.num_samples_per_class, self.dim_input])
+        for func in range(self.batch_size):
+            init_inputs[func] = np.random.uniform(self.input_range[0], self.input_range[1], [self.num_samples_per_class, 1])
+            if input_idx is not None:
+                init_inputs[:,input_idx:,0] = np.linspace(self.input_range[0], self.input_range[1], num=self.num_samples_per_class-input_idx, retstep=False)
+
+            ## John Peurifoy 5/7, switched sin for tanh
+            outputs[func] = amp[func] * np.tanh(freq[func]*(init_inputs[func]-phase[func]))+offset[func]
+            #outputs[func] = amp[func] * np.sin(init_inputs[func]-phase[func])
+        #print("My tanh batch: " , init_inputs)
+        #print("outputs:",outputs)
+        #print init_inputs.shape
         return init_inputs, outputs, amp, phase
