@@ -46,9 +46,9 @@ flags.DEFINE_string('baseline', None, 'oracle, or None')
 flags.DEFINE_integer('pretrain_iterations', 0, 'number of pre-training iterations.')
 flags.DEFINE_integer('metatrain_iterations', 15000, 'number of metatraining iterations.') # 15k for omniglot, 50k for sinusoid
 flags.DEFINE_integer('meta_batch_size', 25, 'number of tasks sampled per meta-update')
-flags.DEFINE_float('meta_lr', 1e-2, 'the base learning rate of the generator')
+flags.DEFINE_float('meta_lr', 1e-5, 'the base learning rate of the generator')
 flags.DEFINE_integer('update_batch_size', 10, 'number of examples used for inner gradient update (K for K-shot learning).')
-flags.DEFINE_float('update_lr', 1e-2, 'step size alpha for inner gradient update.') # 0.1 for omniglot
+flags.DEFINE_float('update_lr', 1e-5, 'step size alpha for inner gradient update.') # 0.1 for omniglot
 flags.DEFINE_integer('num_updates', 1, 'number of inner gradient updates during training.')
 
 ## Model options
@@ -70,7 +70,7 @@ flags.DEFINE_float('train_update_lr', -1, 'value of inner gradient step step dur
 
 def train(model, saver, sess, exp_string, data_generator, resume_itr=0):
     SUMMARY_INTERVAL = 100
-    SAVE_INTERVAL = 1000
+    SAVE_INTERVAL = 5000
     if FLAGS.datasource == 'sinusoid' or FLAGS.datasource=='tanh':
         print("sin and tanh")
         PRINT_INTERVAL = 100
@@ -94,59 +94,35 @@ def train(model, saver, sess, exp_string, data_generator, resume_itr=0):
             # This gets called everytime. 
             #print("generating...")
 
-            if False:
+            
+            batch_x, batch_y, amp, phase = data_generator.generate()
+            #print("Done generating...")
 
-                inputa, inputb, labela, labelb = data_generator.generateTanhData(itr % 4)
+            
 
+            inputa = batch_x[:, :num_classes*FLAGS.update_batch_size, :]
+            labela = batch_y[:, :num_classes*FLAGS.update_batch_size, :]
+            #second half of the data
+            inputb = batch_x[:, num_classes*FLAGS.update_batch_size:, :] # b used for testing
+            labelb = batch_y[:, num_classes*FLAGS.update_batch_size:, :]
+            print(inputa.shape)
+            
 
-            #batch_x, batch_y, amp, phase = data_generator.generateTanhData(1)
-            #print("batch x: " , batch_x)
-            #print("batch y: " , batch_y)
-            if True:
-                batch_x, batch_y, amp, phase = data_generator.generate()
-                #print("batch x: " , batch_x.shape)
-                #print("batch y: " , batch_y.shape)
-                #print("Batch x 0: " , batch_x[0].ravel())
-                #print("Batch y 0: " , batch_y[0].ravel())
-                #plt.scatter(batch_x[0].ravel(),batch_y[0].ravel())
-                #plt.show()
-                # Note that all the data is generated at once. Aka, we generate a new random tanh at each timestep. 
-
-                if FLAGS.baseline == 'oracle':
-                    batch_x = np.concatenate([batch_x, np.zeros([batch_x.shape[0], batch_x.shape[1], 2])], 2)
-                    for i in range(FLAGS.meta_batch_size):
-                        batch_x[i, :, 1] = amp[i]
-                        batch_x[i, :, 2] = phase[i]
-
-                #print("My batch x: " , batch_x.shape)
-                #First half
-                inputa = batch_x[:, :num_classes*FLAGS.update_batch_size, :]
-                labela = batch_y[:, :num_classes*FLAGS.update_batch_size, :]
-                #second half of the data
-                inputb = batch_x[:, num_classes*FLAGS.update_batch_size:, :] # b used for testing
-                labelb = batch_y[:, num_classes*FLAGS.update_batch_size:, :]
-                #print("inputa: " , inputa.shape) 
-                #print("labela: " , labela.shape)
-                #print("inputb: " , inputb.shape)
-                #print("labelb: " , labelb.shape)
-            #print(inputa[0])
-            #print(inputb[0])
             feed_dict = {model.inputa: inputa, model.inputb: inputb,  model.labela: labela, model.labelb: labelb}
 
-        if itr < FLAGS.pretrain_iterations:
-            input_tensors = [model.pretrain_op]
-        else:
-            input_tensors = [model.metatrain_op]
+        input_tensors = [model.metatrain_op]
 
         if (itr % SUMMARY_INTERVAL == 0 or itr % PRINT_INTERVAL == 0):
+            #print("summ op, total_loss1, total_loss2")
+            #print(model.total_losses2[FLAGS.num_updates-1])
             input_tensors.extend([model.summ_op, model.total_loss1, model.total_losses2[FLAGS.num_updates-1]])
-            if model.classification:
-                input_tensors.extend([model.total_accuracy1, model.total_accuracies2[FLAGS.num_updates-1]])
 
+        #print("Running it...")
         result = sess.run(input_tensors, feed_dict)
         #print("Result: " , result)
 
         if itr % SUMMARY_INTERVAL == 0:
+            #print("summary")
             prelosses.append(result[-2])
             if FLAGS.log:
                 train_writer.add_summary(result[1], itr)
@@ -162,10 +138,11 @@ def train(model, saver, sess, exp_string, data_generator, resume_itr=0):
             prelosses, postlosses = [], []
 
         if (itr!=0) and itr % SAVE_INTERVAL == 0:
+            #print("Saving...")
             saver.save(sess, FLAGS.logdir + '/' + exp_string + '/model' + str(itr))
 
-        # sinusoid is infinite data, so no need to test on meta-validation set.
-        if (itr!=0) and itr % TEST_PRINT_INTERVAL == 0 and (FLAGS.datasource !='sinusoid' and FLAGS.datasource != 'tanh'):
+        if (itr!=0) and itr % TEST_PRINT_INTERVAL == 0:
+            #print("testing line 139")
             if 'generate' not in dir(data_generator):
                 feed_dict = {}
                 print("gen...")
@@ -182,17 +159,25 @@ def train(model, saver, sess, exp_string, data_generator, resume_itr=0):
                 inputb = batch_x[:, num_classes*FLAGS.update_batch_size:, :]
                 labela = batch_y[:, :num_classes*FLAGS.update_batch_size, :]
                 labelb = batch_y[:, num_classes*FLAGS.update_batch_size:, :]
-                #print("testing: " )
-                #print('Laba:',labela.shape)
+                print("testing: " )
+                print('Laba:',labela.shape)
 
                 feed_dict = {model.inputa: inputa, model.inputb: inputb,  model.labela: labela, model.labelb: labelb, model.meta_lr: 0.0}
                 if model.classification:
                     input_tensors = [model.total_accuracy1, model.total_accuracies2[FLAGS.num_updates-1]]
                 else:
                     input_tensors = [model.total_loss1, model.total_losses2[FLAGS.num_updates-1]]
-
+                    #input_tensors = [model.total_loss1, model.total_losses2]
+                    
+            #FLAGS = 
+            #Since we adhoced it, we must divide this out at this step. 
+            testBat = 100.0
             result = sess.run(input_tensors, feed_dict)
-            print('Validation results: ' + str(result[0]) + ', ' + str(result[1]))
+            #print("Validation: " , result[1])
+            # Result is total_loss1 and then total_losses_2.
+            # Total_loss1 is 
+            # total_losses_2 is 
+            print('Validation results: ' + str(result[0]/testBat) + ', ' + str(result[1]/testBat))
 
     saver.save(sess, FLAGS.logdir + '/' + exp_string +  '/model' + str(itr))
 
