@@ -954,7 +954,7 @@ def plot_task_ensembles(tasks, master_model = None, model = None, is_VAE = False
 
 
 def plot_individual_tasks(tasks, master_model = None, model = None, max_plots = 24, 
-                          is_VAE = False, is_uncertainty_net = False, is_regulated_net = False, xlim = (-4, 4), sample_times = None):
+                          is_VAE = False, is_uncertainty_net = False, is_regulated_net = False, xlim = (-4, 4), sample_times = None, is_oracle = False):
     import matplotlib.pyplot as plt
     num_columns = 8
     max_plots = max(num_columns * 3, max_plots)
@@ -975,7 +975,11 @@ def plot_individual_tasks(tasks, master_model = None, model = None, max_plots = 
             X_linspace = X_linspace.cuda()
     for task_id, task in tasks.items():
         ((X_train, y_train), (X_test, y_test)), info = task
-        input_size = X_test.size(1)
+        
+        if is_oracle:
+            input_size = X_test.size(1) - len(info["z"].squeeze())
+        else:
+            input_size = X_test.size(1)
         chosen_dim = np.random.choice(range(input_size))
         
         if master_model is not None:
@@ -984,7 +988,12 @@ def plot_individual_tasks(tasks, master_model = None, model = None, max_plots = 
             statistics_list.append(to_np_array(results["statistics"]))
         else:
             results = {}
-            results["y_pred"] = model(X_linspace)
+            if is_oracle:
+                z = to_Variable(np.repeat(np.expand_dims(info["z"], 0), len(X_linspace), 0), is_cuda = is_cuda)
+                X_linspace_feed = torch.cat([X_linspace, z], 1)
+            else:
+                X_linspace_feed = X_linspace
+            results["y_pred"] = model(X_linspace_feed)
             statistics_list.append([0,0])
         
         if task_id not in chosen_id:
@@ -1021,7 +1030,18 @@ def plot_individual_tasks(tasks, master_model = None, model = None, max_plots = 
     return [statistics_list]
 
 
-def plot_individual_tasks_bounce(tasks, num_examples_show = 40, num_tasks_show = 6, master_model = None, model = None, autoencoder = None, num_shots = None, highlight_top = None, **kwargs):
+def plot_individual_tasks_bounce(
+    tasks,
+    num_examples_show = 40,
+    num_tasks_show = 6,
+    master_model = None,
+    model = None,
+    autoencoder = None,
+    num_shots = None,
+    highlight_top = None,
+    valid_input_dims = None,
+    **kwargs
+    ):
     import matplotlib.pylab as plt
     fig = plt.figure(figsize = (25, num_tasks_show / 3 * 8))
     plt.subplots_adjust(hspace = 0.4)
@@ -1090,6 +1110,8 @@ def plot_individual_tasks_bounce(tasks, num_examples_show = 40, num_tasks_show =
             if i >= num_examples_show:
                 break
             x_ele = X_test_numpy[i]
+            if valid_input_dims is not None:
+                x_ele = x_ele[:int(valid_input_dims / 2), :]
             y_ele = y_test_numpy[i]
             ax.plot(np.concatenate((x_ele[:,0], y_ele[:,0])), np.concatenate((x_ele[:,1], y_ele[:,1])), ".-", color = COLOR_LIST[i % len(COLOR_LIST)], zorder = -1)
             ax.scatter(y_ele[:,0], y_ele[:,1], s = np.linspace(10, 20, len(y_ele[:,0])), marker = "o", color = "r", zorder = 2)

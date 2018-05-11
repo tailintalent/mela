@@ -15,6 +15,7 @@ import time
 import sys, os
 sys.path.append(os.path.join(os.path.dirname("__file__"), '..', '..'))
 from AI_scientist.util import sort_two_lists
+from AI_scientist.settings.global_param import SCALE_FACTOR
 
 
 # In[2]:
@@ -120,8 +121,8 @@ def get_task(
         y[..., 1] = y[..., 1] + translation[1]
     if normalize:
         # scale the states to between (0,1):
-        X = X * 0.025  
-        y = y * 0.025
+        X = X * SCALE_FACTOR
+        y = y * SCALE_FACTOR
 
     # Randomly select num_examples of examples:
     chosen_idx = np.random.choice(range(len(X)), size = num_examples, replace = False)
@@ -375,7 +376,16 @@ def get_env_data(
     return ((X_train, y_train), (X_test, y_test), (reflected_train, reflected_test)), info
 
 
-def get_torch_tasks(tasks, task_key, start_id = 0, num_tasks = None, num_forward_steps = None, is_flatten = True, is_cuda = False):
+def get_torch_tasks(
+    tasks,
+    task_key,
+    start_id = 0,
+    num_tasks = None,
+    num_forward_steps = None,
+    is_flatten = True,
+    is_oracle = False,
+    is_cuda = False,
+    ):
     tasks_dict = OrderedDict()
     for i, task in enumerate(tasks):
         if num_tasks is not None and i > num_tasks:
@@ -396,6 +406,11 @@ def get_torch_tasks(tasks, task_key, start_id = 0, num_tasks = None, num_forward
                 y_train = y_train.contiguous().view(y_train.size(0), -1)
                 X_test = X_test.contiguous().view(X_test.size(0), -1)
                 y_test = y_test.contiguous().view(y_test.size(0), -1)
+        if is_oracle:
+            z_train = Variable(torch.FloatTensor(np.repeat(np.expand_dims(z_info["z"],0) * SCALE_FACTOR, len(X_train), 0)), requires_grad = False)
+            z_test = Variable(torch.FloatTensor(np.repeat(np.expand_dims(z_info["z"],0) * SCALE_FACTOR, len(X_test), 0)), requires_grad = False)
+            X_train = torch.cat([X_train, z_train], 1)
+            X_test = torch.cat([X_test, z_test], 1)
         
         if is_cuda:
             X_train = X_train.cuda()

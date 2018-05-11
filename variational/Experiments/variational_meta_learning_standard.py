@@ -67,7 +67,8 @@ task_id_list = [
 
 exp_id = "C-May10"
 exp_mode = "meta"
-# exp_mode = "finetune"  # Choose from meta, finetune and oracle
+# exp_mode = "finetune"
+# exp_mode = "oracle"
 is_VAE = False
 is_uncertainty_net = False
 is_regulated_net = False
@@ -76,16 +77,23 @@ VAE_beta = 0.2
 task_id_list = get_args(task_id_list, 3, type = "tuple")
 if task_id_list[0] in ["C-sin", "C-tanh"]:
     statistics_output_neurons = 2 if task_id_list[0] == "C-sin" else 4
+    z_size = 2 if task_id_list[0] == "C-sin" else 4
     num_shots = 10
     input_size = 1
     output_size = 1
 elif task_id_list[0] == "bounce-states":
     statistics_output_neurons = 8
     num_shots = 100
+    z_size = 8
     input_size = 6
     output_size = 2
 elif task_id_list[0] == "bounce-images":
     raise
+    
+is_oracle = (exp_mode == "oracle")
+if is_oracle:
+    input_size += z_size
+print("exp_mode: {0}".format(exp_mode))
 
 lr = 5e-5
 num_train_tasks = 100
@@ -142,8 +150,8 @@ num_backwards = 1
 assert len(task_id_list) == 1
 dataset_filename = dataset_PATH + task_id_list[0] + "_{0}-shot.p".format(num_shots)
 tasks = pickle.load(open(dataset_filename, "rb"))
-tasks_train = get_torch_tasks(tasks["tasks_train"], task_id_list[0], num_forward_steps = 1, is_cuda = is_cuda)
-tasks_test = get_torch_tasks(tasks["tasks_test"], task_id_list[0], num_tasks = num_test_tasks, num_forward_steps = 1, is_cuda = is_cuda)
+tasks_train = get_torch_tasks(tasks["tasks_train"], task_id_list[0], num_forward_steps = 1, is_oracle = is_oracle, is_cuda = is_cuda)
+tasks_test = get_torch_tasks(tasks["tasks_test"], task_id_list[0], num_tasks = num_test_tasks, num_forward_steps = 1, is_oracle = is_oracle, is_cuda = is_cuda)
 
 # Obtain nets:
 all_keys = list(tasks_train.keys()) + list(tasks_test.keys())
@@ -181,7 +189,7 @@ if exp_mode in ["meta"]:
     record_data(data_record, [struct_param_gen_base, struct_param_pre, struct_param_post], ["struct_param_gen_base", "struct_param_pre", "struct_param_post"])
     model = None
 
-elif exp_mode in ["finetune"]:
+elif exp_mode in ["finetune", "oracle"]:
     struct_param_net = [[num_neurons, "Simple_Layer", {}] for num_neurons in main_hidden_neurons]
     struct_param_net.append([output_size, "Simple_Layer", {"activation": "linear"}])
     record_data(data_record, [struct_param_net], ["struct_param_net"])
@@ -245,14 +253,12 @@ for i in range(num_iter + 1):
             ((X_train, y_train), (X_test, y_test)), _ = task
             for k in range(num_backwards):
                 optimizer.zero_grad()
-                if exp_mode in ["meta"]:
+                if master_model is not None:
                     results = master_model.get_predictions(X_test = X_test, X_train = X_train, y_train = y_train, 
                                                           is_VAE = is_VAE, is_uncertainty_net = is_uncertainty_net, is_regulated_net = is_regulated_net)
-                elif exp_mode in ["finetune"]:
+                else:
                     results = {}
                     results["y_pred"] = model(X_test)
-                else:
-                    raise
                 if is_VAE:
                     loss, KLD = criterion(results["y_pred"], y_test, mu = results["statistics_mu"], logvar = results["statistics_logvar"])
                     KLD_total = KLD_total + KLD
@@ -281,14 +287,12 @@ for i in range(num_iter + 1):
             if task_key not in chosen_task_keys:
                 continue
             ((X_train, y_train), (X_test, y_test)), _ = task
-            if exp_mode in ["meta"]:
+            if master_model is not None:
                 results = master_model.get_predictions(X_test = X_test, X_train = X_train, y_train = y_train, 
                                                       is_VAE = is_VAE, is_uncertainty_net = is_uncertainty_net, is_regulated_net = is_regulated_net)
-            elif exp_mode in ["finetune"]:
+            else:
                 results = {}
                 results["y_pred"] = model(X_test)
-            else:
-                raise
             if is_VAE:
                 loss, KLD = criterion(results["y_pred"], y_test, mu = results["statistics_mu"], logvar = results["statistics_logvar"])
                 loss = loss + KLD
@@ -383,12 +387,12 @@ for i in range(num_iter + 1):
 
             # Plotting individual test data:
             if "bounce" in task_id_list[0]:
-                plot_individual_tasks_bounce(tasks_test, num_examples_show = 40, num_tasks_show = 6, master_model = master_model, model = model, num_shots = 200)
+                plot_individual_tasks_bounce(tasks_test, num_examples_show = 40, num_tasks_show = 6, master_model = master_model, model = model, num_shots = 200, valid_input_dims = input_size - z_size)
             else:
                 print("train tasks:")
-                plot_individual_tasks(tasks_train, master_model = master_model, model = model, is_VAE = is_VAE, is_uncertainty_net = is_uncertainty_net, is_regulated_net = is_regulated_net, xlim = task_settings["xlim"])
+                plot_individual_tasks(tasks_train, master_model = master_model, model = model, is_VAE = is_VAE, is_uncertainty_net = is_uncertainty_net, is_regulated_net = is_regulated_net, is_oracle = is_oracle, xlim = task_settings["xlim"])
                 print("test tasks:")
-                plot_individual_tasks(tasks_test, master_model = master_model, model = model, is_VAE = is_VAE, is_uncertainty_net = is_uncertainty_net, is_regulated_net = is_regulated_net, xlim = task_settings["xlim"])
+                plot_individual_tasks(tasks_test, master_model = master_model, model = model, is_VAE = is_VAE, is_uncertainty_net = is_uncertainty_net, is_regulated_net = is_regulated_net, is_oracle = is_oracle, xlim = task_settings["xlim"])
         print("=" * 50 + "\n\n")
         try:
             sys.stdout.flush()
