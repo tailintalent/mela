@@ -60,8 +60,8 @@ task_id_list = [
 # "M-tanh",
 # "M-softplus",
 # "C-sin",
-"C-tanh",
-# "bounce-states",
+# "C-tanh",
+"bounce-states",
 # "bounce-images",
 ]
 
@@ -73,6 +73,7 @@ is_uncertainty_net = False
 is_regulated_net = False
 is_load_data = False
 VAE_beta = 0.2
+task_id_list = get_args(task_id_list, 3, type = "tuple")
 if task_id_list[0] in ["C-sin", "C-tanh"]:
     statistics_output_neurons = 2 if task_id_list[0] == "C-sin" else 4
     num_shots = 10
@@ -107,7 +108,6 @@ array_id = 0
 
 exp_id = get_args(exp_id, 1)
 exp_mode = get_args(exp_mode, 2)
-task_id_list = get_args(task_id_list, 3, type = "tuple")
 statistics_output_neurons = get_args(statistics_output_neurons, 4, type = "int")
 is_VAE = get_args(is_VAE, 5, type = "bool")
 VAE_beta = get_args(VAE_beta, 6, type = "float")
