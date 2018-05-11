@@ -944,12 +944,12 @@ def plot_task_ensembles(tasks, master_model = None, model = None, is_VAE = False
         z_list.append(info["z"])
         if isplot:
             plt.plot(to_np_array(y_test)[:,0], to_np_array(results["y_pred"])[:,0], ".", markersize = 1, alpha = 0.5)
-    if title is not None and isplot:
-        plt.title(title)
     if isplot:
+        if title is not None:
+            plt.title(title)
         plt.show()
-    plt.clf()
-    plt.close()
+        plt.clf()
+        plt.close()
     return np.array(statistics_list), np.array(z_list)
 
 

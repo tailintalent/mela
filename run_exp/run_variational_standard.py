@@ -1,4 +1,5 @@
 import os, sys
+sys.path.append(os.path.join(os.path.dirname("__file__"), '..', '..'))
 
 exp_id=[
 "syn1.0",
@@ -98,7 +99,7 @@ activation_model=[
 ]
 
 optim_mode=[
-"individual",
+"indi",
 "sum",
 ]
 
@@ -147,8 +148,8 @@ param_list = [exp_id,
             activation_model,
             optim_mode,
             is_uncertainty_net,
-            patience,
             loss_core,
+            patience,
 ]
 param_chosen = assign_array_id(array_id, param_list)
 exec_str = "python ../variational/Experiments/variational_meta_learning_standard.py"

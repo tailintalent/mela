@@ -18,9 +18,18 @@ import torch.optim as optim
 from torch.autograd import Variable
 import matplotlib.pyplot as plt
 import sys, os
-sys.path.append(os.path.join(os.path.dirname("__file__"), '..', '..', '..'))
+try:
+    get_ipython().run_line_magic('matplotlib', 'inline')
+    sys.path.append(os.path.join(os.path.dirname("__file__"), '..', '..', '..'))
+    from AI_scientist.settings.filepath import variational_model_PATH, dataset_PATH
+    isplot = True
+except:
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+    from AI_scientist.settings.filepath import variational_model_PATH, dataset_PATH
+    if dataset_PATH[:2] == "..":
+        dataset_PATH = dataset_PATH[3:]
+    isplot = False
 from AI_scientist.util import plot_matrices, make_dir, get_struct_str, get_args, Early_Stopping, record_data, manifold_embedding
-from AI_scientist.settings.filepath import variational_model_PATH, dataset_PATH
 from AI_scientist.pytorch.net import Net
 from AI_scientist.pytorch.util_pytorch import Loss_with_uncertainty
 from AI_scientist.variational.util_variational import get_torch_tasks
@@ -34,12 +43,6 @@ seed = 1
 np.random.seed(seed)
 torch.manual_seed(seed)
 is_cuda = torch.cuda.is_available()
-
-try:
-    get_ipython().run_line_magic('matplotlib', 'inline')
-    isplot = True
-except:
-    isplot = False
 
 
 # ## Training:
