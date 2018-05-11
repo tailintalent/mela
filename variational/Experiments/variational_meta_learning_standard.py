@@ -18,9 +18,18 @@ import torch.optim as optim
 from torch.autograd import Variable
 import matplotlib.pyplot as plt
 import sys, os
-sys.path.append(os.path.join(os.path.dirname("__file__"), '..', '..', '..'))
+try:
+    get_ipython().run_line_magic('matplotlib', 'inline')
+    sys.path.append(os.path.join(os.path.dirname("__file__"), '..', '..', '..'))
+    from AI_scientist.settings.filepath import variational_model_PATH, dataset_PATH
+    isplot = True
+except:
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+    from AI_scientist.settings.filepath import variational_model_PATH, dataset_PATH
+    if dataset_PATH[:2] == "..":
+        dataset_PATH = dataset_PATH[3:]
+    isplot = False
 from AI_scientist.util import plot_matrices, make_dir, get_struct_str, get_args, Early_Stopping, record_data, manifold_embedding
-from AI_scientist.settings.filepath import variational_model_PATH, dataset_PATH
 from AI_scientist.pytorch.net import Net
 from AI_scientist.pytorch.util_pytorch import Loss_with_uncertainty
 from AI_scientist.variational.util_variational import get_torch_tasks
@@ -34,12 +43,6 @@ seed = 1
 np.random.seed(seed)
 torch.manual_seed(seed)
 is_cuda = torch.cuda.is_available()
-
-try:
-    get_ipython().run_line_magic('matplotlib', 'inline')
-    isplot = True
-except:
-    isplot = False
 
 
 # ## Training:
@@ -57,13 +60,14 @@ task_id_list = [
 # "M-tanh",
 # "M-softplus",
 # "C-sin",
-# "C-tanh",
-"bounce-states",
+"C-tanh",
+# "bounce-states",
 # "bounce-images",
 ]
 
-exp_id = "C-May9"
-exp_mode = "meta"  # Choose from meta, baseline and oracle
+exp_id = "C-May10"
+exp_mode = "meta"
+# exp_mode = "finetune"  # Choose from meta, finetune and oracle
 is_VAE = False
 is_uncertainty_net = False
 is_regulated_net = False
@@ -93,12 +97,12 @@ statistics_pooling = "max"
 struct_param_pre_neurons = (60,3)
 struct_param_gen_base_neurons = (60,3)
 main_hidden_neurons = (40, 40)
-patience = 200
 reg_amp = 1e-6
 activation_gen = "leakyRelu"
 activation_model = "leakyRelu"
 optim_mode = "indi"
 loss_core = "huber"
+patience = 200
 array_id = 0
 
 exp_id = get_args(exp_id, 1)
@@ -120,18 +124,17 @@ activation_model = get_args(activation_model, 16)
 optim_mode = get_args(optim_mode, 17)
 is_uncertainty_net = get_args(is_uncertainty_net, 18, "bool")
 loss_core = get_args(loss_core, 19)
-array_id = get_args(array_id, 20)
+patience = get_args(patience, 20, "int")
+array_id = get_args(array_id, 21)
 
 # Settings:
-reg_dict = {"statistics_Net": {"weight": reg_amp, "bias": reg_amp},
-            "generative_Net": {"weight": reg_amp, "bias": reg_amp, "W_gen": reg_amp, "b_gen": reg_amp}}
 task_settings = {
     "xlim": (-5, 5),
     "num_examples": 20,
     "test_size": 0.5,
 }
 isParallel = False
-inspect_interval = 50
+inspect_interval = 20
 save_interval = 100
 num_backwards = 1
 
@@ -143,35 +146,58 @@ tasks_train = get_torch_tasks(tasks["tasks_train"], task_id_list[0], num_forward
 tasks_test = get_torch_tasks(tasks["tasks_test"], task_id_list[0], num_tasks = num_test_tasks, num_forward_steps = 1, is_cuda = is_cuda)
 
 # Obtain nets:
-struct_param_pre = [[struct_param_pre_neurons[0], "Simple_Layer", {}] for _ in range(struct_param_pre_neurons[1])]
-struct_param_pre.append([pre_pooling_neurons, "Simple_Layer", {"activation": "linear"}])
-struct_param_post = None
-struct_param_gen_base = [[struct_param_gen_base_neurons[0], "Simple_Layer", {}] for _ in range(struct_param_gen_base_neurons[1])]
-statistics_Net, generative_Net, generative_Net_logstd = get_nets(input_size = input_size, output_size = output_size, main_hidden_neurons = main_hidden_neurons,
-                                          pre_pooling_neurons = pre_pooling_neurons, statistics_output_neurons = statistics_output_neurons, num_context_neurons = num_context_neurons,
-                                          struct_param_pre = struct_param_pre,
-                                          struct_param_gen_base = struct_param_gen_base,
-                                          activation_statistics = activation_gen,
-                                          activation_generative = activation_gen,
-                                          activation_model = activation_model,
-                                          statistics_pooling = statistics_pooling,
-                                          isParallel = isParallel,
-                                          is_VAE = is_VAE,
-                                          is_uncertainty_net = is_uncertainty_net,
-                                          is_cuda = is_cuda,
-                                         )
-if is_regulated_net:
-    struct_param_regulated_Net = [[num_neurons, "Simple_Layer", {}] for num_neurons in main_hidden_neurons]
-    struct_param_regulated_Net.append([1, "Simple_Layer", {"activation": "linear"}])
-    generative_Net = Net(input_size = input_size, struct_param = struct_param_regulated_Net, settings = {"activation": activation_model})
-master_model = Master_Model(statistics_Net, generative_Net, generative_Net_logstd, is_cuda = is_cuda)
+all_keys = list(tasks_train.keys()) + list(tasks_test.keys())
+data_record = {"loss": {key: [] for key in all_keys}, "loss_sampled": {key: [] for key in all_keys}, "mse": {key: [] for key in all_keys},
+               "reg": {key: [] for key in all_keys}, "KLD": {key: [] for key in all_keys}}
+if exp_mode in ["meta"]:
+    struct_param_pre = [[struct_param_pre_neurons[0], "Simple_Layer", {}] for _ in range(struct_param_pre_neurons[1])]
+    struct_param_pre.append([pre_pooling_neurons, "Simple_Layer", {"activation": "linear"}])
+    struct_param_post = None
+    struct_param_gen_base = [[struct_param_gen_base_neurons[0], "Simple_Layer", {}] for _ in range(struct_param_gen_base_neurons[1])]
+    statistics_Net, generative_Net, generative_Net_logstd = get_nets(input_size = input_size, output_size = output_size, main_hidden_neurons = main_hidden_neurons,
+                                              pre_pooling_neurons = pre_pooling_neurons, statistics_output_neurons = statistics_output_neurons, num_context_neurons = num_context_neurons,
+                                              struct_param_pre = struct_param_pre,
+                                              struct_param_gen_base = struct_param_gen_base,
+                                              activation_statistics = activation_gen,
+                                              activation_generative = activation_gen,
+                                              activation_model = activation_model,
+                                              statistics_pooling = statistics_pooling,
+                                              isParallel = isParallel,
+                                              is_VAE = is_VAE,
+                                              is_uncertainty_net = is_uncertainty_net,
+                                              is_cuda = is_cuda,
+                                             )
+    if is_regulated_net:
+        struct_param_regulated_Net = [[num_neurons, "Simple_Layer", {}] for num_neurons in main_hidden_neurons]
+        struct_param_regulated_Net.append([1, "Simple_Layer", {"activation": "linear"}])
+        generative_Net = Net(input_size = input_size, struct_param = struct_param_regulated_Net, settings = {"activation": activation_model})
+    master_model = Master_Model(statistics_Net, generative_Net, generative_Net_logstd, is_cuda = is_cuda)
+    if is_uncertainty_net:
+        optimizer = optim.Adam(chain.from_iterable([statistics_Net.parameters(), generative_Net.parameters(), generative_Net_logstd.parameters()]), lr = lr)
+    else:
+        optimizer = optim.Adam(chain.from_iterable([statistics_Net.parameters(), generative_Net.parameters()]), lr = lr)
+    reg_dict = {"statistics_Net": {"weight": reg_amp, "bias": reg_amp},
+                "generative_Net": {"weight": reg_amp, "bias": reg_amp, "W_gen": reg_amp, "b_gen": reg_amp}}
+    record_data(data_record, [struct_param_gen_base, struct_param_pre, struct_param_post], ["struct_param_gen_base", "struct_param_pre", "struct_param_post"])
+    model = None
 
-# Setting up optimizer and loss functions:
-if is_uncertainty_net:
-    optimizer = optim.Adam(chain.from_iterable([statistics_Net.parameters(), generative_Net.parameters(), generative_Net_logstd.parameters()]), lr = lr)
-else:
-    optimizer = optim.Adam(chain.from_iterable([statistics_Net.parameters(), generative_Net.parameters()]), lr = lr)
-
+elif exp_mode in ["finetune"]:
+    struct_param_net = [[num_neurons, "Simple_Layer", {}] for num_neurons in main_hidden_neurons]
+    struct_param_net.append([output_size, "Simple_Layer", {"activation": "linear"}])
+    record_data(data_record, [struct_param_net], ["struct_param_net"])
+    model = Net(input_size = input_size,
+              struct_param = struct_param_net,
+              settings = {"activation": activation_model},
+              is_cuda = is_cuda,
+             )
+    reg_dict = {"net": {"weight": reg_amp, "bias": reg_amp}}
+    optimizer = optim.Adam(model.parameters(), lr = lr)
+    statistics_Net = None
+    generative_Net = None
+    generative_Net_logstd = None
+    master_model = None
+    
+# Loss function:
 if loss_core == "mse":
     loss_fun_core = nn.MSELoss(size_average = True)
 elif loss_core == "huber":
@@ -188,19 +214,16 @@ else:
 early_stopping = Early_Stopping(patience = patience)
 
 # Setting up recordings:
-all_keys = list(tasks_train.keys()) + list(tasks_test.keys())
-data_record = {"loss": {key: [] for key in all_keys}, "loss_sampled": {key: [] for key in all_keys}, "mse": {key: [] for key in all_keys},
-               "reg": {key: [] for key in all_keys}, "KLD": {key: [] for key in all_keys}}
 info_dict = {"array_id": array_id}
 info_dict["data_record"] = data_record
 info_dict["model_dict"] = []
 record_data(data_record, [exp_id, tasks_train, tasks_test, task_id_list, task_settings, reg_dict, is_uncertainty_net, lr, pre_pooling_neurons, num_backwards, batch_size_task, 
-                          struct_param_gen_base, struct_param_pre, struct_param_post, statistics_pooling, activation_gen, activation_model], 
+                          statistics_pooling, activation_gen, activation_model], 
             ["exp_id", "tasks_train", "tasks_test", "task_id_list", "task_settings", "reg_dict", "is_uncertainty_net", "lr", "pre_pooling_neurons", "num_backwards", "batch_size_task",
-             "struct_param_gen_base", "struct_param_pre", "struct_param_post", "statistics_pooling", "activation_gen", "activation_model"])
+             "statistics_pooling", "activation_gen", "activation_model"])
 
-filename = variational_model_PATH + "/trained_models/{0}/Net_{1}_{2}_input_{3}_({4},{5})_stat_{6}_pre_{7}_pool_{8}_context_{9}_hid_{10}_{11}_{12}_VAE_{13}_{14}_uncer_{15}_lr_{16}_reg_{17}_actgen_{18}_actmodel_{19}_struct_{20}_{21}_core_{22}_{23}_".format(
-    exp_id, exp_mode, task_id_list, input_size, num_train_tasks, num_test_tasks, statistics_output_neurons, pre_pooling_neurons, statistics_pooling, num_context_neurons, main_hidden_neurons, struct_param_pre_neurons, struct_param_gen_base_neurons, num_backwards, is_VAE, VAE_beta, is_uncertainty_net, lr, reg_amp, activation_gen, activation_model, get_struct_str(struct_param_gen_base), optim_mode, loss_core, exp_id)
+filename = variational_model_PATH + "/trained_models/{0}/Net_{1}_{2}_input_{3}_({4},{5})_stat_{6}_pre_{7}_pool_{8}_context_{9}_hid_{10}_{11}_{12}_VAE_{13}_{14}_uncer_{15}_lr_{16}_reg_{17}_actgen_{18}_actmodel_{19}_{20}_core_{21}_pat_{22}_{23}_".format(
+    exp_id, exp_mode, task_id_list, input_size, num_train_tasks, num_test_tasks, statistics_output_neurons, pre_pooling_neurons, statistics_pooling, num_context_neurons, main_hidden_neurons, struct_param_pre_neurons, struct_param_gen_base_neurons, is_VAE, VAE_beta, is_uncertainty_net, lr, reg_amp, activation_gen, activation_model, optim_mode, loss_core, patience, exp_id)
 make_dir(filename)
 print(filename)
 
@@ -222,27 +245,23 @@ for i in range(num_iter + 1):
             ((X_train, y_train), (X_test, y_test)), _ = task
             for k in range(num_backwards):
                 optimizer.zero_grad()
+                if exp_mode in ["meta"]:
+                    results = master_model.get_predictions(X_test = X_test, X_train = X_train, y_train = y_train, 
+                                                          is_VAE = is_VAE, is_uncertainty_net = is_uncertainty_net, is_regulated_net = is_regulated_net)
+                elif exp_mode in ["finetune"]:
+                    results = {}
+                    results["y_pred"] = model(X_test)
+                else:
+                    raise
                 if is_VAE:
-                    statistics_mu, statistics_logvar = statistics_Net(torch.cat([X_train, y_train], 1))
-                    statistics = sample_Gaussian(statistics_mu, statistics_logvar)
-                    if is_regulated_net:
-                        statistics = get_regulated_statistics(generative_Net, statistics)
-                    y_pred = generative_Net(X_test, statistics)
-                    loss, KLD = criterion(y_pred, y_test, mu = statistics_mu, logvar = statistics_logvar)
+                    loss, KLD = criterion(results["y_pred"], y_test, mu = results["statistics_mu"], logvar = results["statistics_logvar"])
                     KLD_total = KLD_total + KLD
                 else:
                     if is_uncertainty_net:
-                        statistics_mu, statistics_logvar = statistics_Net(torch.cat([X_train, y_train], 1))
-                        y_pred = generative_Net(X_test, statistics_mu)
-                        y_pred_logstd = generative_Net_logstd(X_test, statistics_logvar)
-                        loss = criterion(y_pred, y_test, log_std = y_pred_logstd)
+                        loss = criterion(results["y_pred"], y_test, log_std = results["y_pred_logstd"])
                     else:
-                        statistics = statistics_Net(torch.cat([X_train, y_train], 1))
-                        if is_regulated_net:
-                            statistics = get_regulated_statistics(generative_Net, statistics)
-                        y_pred = generative_Net(X_test, statistics)
-                        loss = criterion(y_pred, y_test)
-                reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, is_cuda = is_cuda)
+                        loss = criterion(results["y_pred"], y_test)
+                reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, net = model, is_cuda = is_cuda)
                 loss = loss + reg
                 loss.backward(retain_graph = True)
                 optimizer.step()
@@ -262,22 +281,22 @@ for i in range(num_iter + 1):
             if task_key not in chosen_task_keys:
                 continue
             ((X_train, y_train), (X_test, y_test)), _ = task
+            if exp_mode in ["meta"]:
+                results = master_model.get_predictions(X_test = X_test, X_train = X_train, y_train = y_train, 
+                                                      is_VAE = is_VAE, is_uncertainty_net = is_uncertainty_net, is_regulated_net = is_regulated_net)
+            elif exp_mode in ["finetune"]:
+                results = {}
+                results["y_pred"] = model(X_test)
+            else:
+                raise
             if is_VAE:
-                statistics_mu, statistics_logvar = statistics_Net(torch.cat([X_train, y_train], 1))
-                statistics = sample_Gaussian(statistics_mu, statistics_logvar)
-                y_pred = generative_Net(X_test, statistics)
-                loss, KLD = criterion(y_pred, y_test, mu = statistics_mu, logvar = statistics_logvar)
+                loss, KLD = criterion(results["y_pred"], y_test, mu = results["statistics_mu"], logvar = results["statistics_logvar"])
                 loss = loss + KLD
             else:
                 if is_uncertainty_net:
-                    statistics_mu, statistics_logvar = statistics_Net(torch.cat([X_train, y_train], 1))
-                    y_pred = generative_Net(X_test, statistics_mu)
-                    y_pred_logstd = generative_Net_logstd(X_test, statistics_logvar)
-                    loss = criterion(y_pred, y_test, log_std = y_pred_logstd)
+                    loss = criterion(results["y_pred"], y_test, log_std = results["y_pred_logstd"])
                 else:
-                    statistics = statistics_Net(torch.cat([X_train, y_train], 1))
-                    y_pred = generative_Net(X_test, statistics)
-                    loss = criterion(y_pred, y_test)
+                    loss = criterion(results["y_pred"], y_test)
             reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, is_cuda = is_cuda)
             loss_total = loss_total + loss + reg
         loss_total.backward()
@@ -287,17 +306,18 @@ for i in range(num_iter + 1):
     
 
     loss_test_record = []
-    for task_key, task in tasks_test.items():
-        loss_test, _, _, _ = evaluate(task, statistics_Net, generative_Net, generative_Net_logstd = generative_Net_logstd, criterion = criterion, is_VAE = is_VAE, is_regulated_net = is_regulated_net)
+    for task_key, task in tasks_train.items():
+        loss_test, _, _, _ = evaluate(task, master_model = master_model, model = model, criterion = criterion, is_VAE = is_VAE, is_regulated_net = is_regulated_net)
         loss_test_record.append(loss_test)
     to_stop = early_stopping.monitor(np.mean(loss_test_record))
+
 
     # Validation and visualization:
     if i % inspect_interval == 0 or to_stop:
         print("=" * 50)
         print("training tasks:")
         for task_key, task in tasks_train.items():
-            loss_test, loss_test_sampled, mse, KLD_test = evaluate(task, statistics_Net, generative_Net, generative_Net_logstd = generative_Net_logstd, criterion = criterion, is_VAE = is_VAE, is_regulated_net = is_regulated_net)
+            loss_test, loss_test_sampled, mse, KLD_test = evaluate(task, master_model = master_model, model = model, criterion = criterion, is_VAE = is_VAE, is_regulated_net = is_regulated_net)
             reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, is_cuda = is_cuda).data[0]
             data_record["loss"][task_key].append(loss_test)
             data_record["loss_sampled"][task_key].append(loss_test_sampled)
@@ -306,14 +326,14 @@ for i in range(num_iter + 1):
             data_record["KLD"][task_key].append(KLD_test)
             print('{0}\ttrain\t{1}  \tloss: {2:.5f}\tloss_sampled:{3:.5f} \tmse:{4:.5f}\tKLD:{5:.6f}\treg:{6:.6f}'.format(i, task_key, loss_test, loss_test_sampled, mse, KLD_test, reg))
         for task_key, task in tasks_test.items():
-            loss_test, loss_test_sampled, mse, KLD_test = evaluate(task, statistics_Net, generative_Net, generative_Net_logstd = generative_Net_logstd, criterion = criterion, is_VAE = is_VAE, is_regulated_net = is_regulated_net)
+            loss_test, loss_test_sampled, mse, KLD_test = evaluate(task, master_model = master_model, model = model, criterion = criterion, is_VAE = is_VAE, is_regulated_net = is_regulated_net)
             reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, is_cuda = is_cuda).data[0]
             data_record["loss"][task_key].append(loss_test)
             data_record["loss_sampled"][task_key].append(loss_test_sampled)
             data_record["mse"][task_key].append(mse)
             data_record["reg"][task_key].append(reg)
             data_record["KLD"][task_key].append(KLD_test)
-            print('{0}\ttrain\t{1}  \tloss: {2:.5f}\tloss_sampled:{3:.5f} \tmse:{4:.5f}\tKLD:{5:.6f}\treg:{6:.6f}'.format(i, task_key, loss_test, loss_test_sampled, mse, KLD_test, reg))
+            print('{0}\ttest\t{1}  \tloss: {2:.5f}\tloss_sampled:{3:.5f} \tmse:{4:.5f}\tKLD:{5:.6f}\treg:{6:.6f}'.format(i, task_key, loss_test, loss_test_sampled, mse, KLD_test, reg))
         loss_train_list = [data_record["loss"][task_key][-1] for task_key in tasks_train]
         loss_test_list = [data_record["loss"][task_key][-1] for task_key in tasks_test]
         loss_train_sampled_list = [data_record["loss_sampled"][task_key][-1] for task_key in tasks_train]
@@ -323,7 +343,7 @@ for i in range(num_iter + 1):
         reg_train_list = [data_record["reg"][task_key][-1] for task_key in tasks_train]
         reg_test_list = [data_record["reg"][task_key][-1] for task_key in tasks_test]
         mse_few_shot = plot_few_shot_loss(master_model, tasks_test, isplot = isplot)
-        plot_quick_learn_performance(master_model, tasks_test, isplot = isplot)
+        plot_quick_learn_performance(master_model if exp_mode in ["meta"] else model, tasks_test, isplot = isplot)
         record_data(data_record, 
                     [np.mean(loss_train_list), np.median(loss_train_list), np.mean(reg_train_list), i,
                      np.mean(loss_test_list), np.median(loss_test_list), np.mean(reg_test_list),
@@ -351,8 +371,8 @@ for i in range(num_iter + 1):
             plot_data_record(data_record, is_VAE = is_VAE)
 
         # Plotting y_pred vs. y_target:
-        statistics_list_train, z_list_train = plot_task_ensembles(tasks_train, statistics_Net, generative_Net, is_VAE = is_VAE, is_regulated_net = is_regulated_net, title = "y_pred_train vs. y_train", isplot = isplot)
-        statistics_list_test, z_list_test = plot_task_ensembles(tasks_test, statistics_Net, generative_Net, is_VAE = is_VAE, is_regulated_net = is_regulated_net, title = "y_pred_test vs. y_test", isplot = isplot)
+        statistics_list_train, z_list_train = plot_task_ensembles(tasks_train, master_model = master_model, model = model, is_VAE = is_VAE, is_uncertainty_net = is_uncertainty_net, is_regulated_net = is_regulated_net, title = "y_pred_train vs. y_train", isplot = isplot)
+        statistics_list_test, z_list_test = plot_task_ensembles(tasks_test, master_model = master_model, model = model, is_VAE = is_VAE, is_uncertainty_net = is_uncertainty_net, is_regulated_net = is_regulated_net, title = "y_pred_test vs. y_test", isplot = isplot)
         record_data(data_record, [np.array(z_list_train), np.array(z_list_test), np.array(statistics_list_train), np.array(statistics_list_test)], 
                     ["z_list_train_list", "z_list_test_list", "statistics_list_train_list", "statistics_list_test_list"])
         if isplot:
@@ -363,19 +383,22 @@ for i in range(num_iter + 1):
 
             # Plotting individual test data:
             if "bounce" in task_id_list[0]:
-                plot_individual_tasks_bounce(tasks_test, num_examples_show = 40, num_tasks_show = 6, master_model = master_model, num_shots = 200)
+                plot_individual_tasks_bounce(tasks_test, num_examples_show = 40, num_tasks_show = 6, master_model = master_model, model = model, num_shots = 200)
             else:
                 print("train tasks:")
-                plot_individual_tasks(tasks_train, statistics_Net, generative_Net, generative_Net_logstd = generative_Net_logstd, is_VAE = is_VAE, is_regulated_net = is_regulated_net, xlim = task_settings["xlim"])
+                plot_individual_tasks(tasks_train, master_model = master_model, model = model, is_VAE = is_VAE, is_uncertainty_net = is_uncertainty_net, is_regulated_net = is_regulated_net, xlim = task_settings["xlim"])
                 print("test tasks:")
-                plot_individual_tasks(tasks_test, statistics_Net, generative_Net, generative_Net_logstd = generative_Net_logstd, is_VAE = is_VAE, is_regulated_net = is_regulated_net, xlim = task_settings["xlim"])
+                plot_individual_tasks(tasks_test, master_model = master_model, model = model, is_VAE = is_VAE, is_uncertainty_net = is_uncertainty_net, is_regulated_net = is_regulated_net, xlim = task_settings["xlim"])
         print("=" * 50 + "\n\n")
         try:
             sys.stdout.flush()
         except:
             pass
     if i % save_interval == 0 or to_stop:
-        record_data(info_dict, [master_model.model_dict, i], ["model_dict", "iter"])
+        if master_model is not None:
+            record_data(info_dict, [master_model.model_dict, i], ["model_dict", "iter"])
+        else:
+            record_data(info_dict, [model.model_dict, i], ["model_dict", "iter"])
         pickle.dump(info_dict, open(filename + "info.p", "wb"))
     if to_stop:
         print("The training loss stops decreasing for {0} steps. Early stopping at {1}.".format(patience, i))
