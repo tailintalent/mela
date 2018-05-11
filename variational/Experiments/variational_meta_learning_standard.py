@@ -35,10 +35,16 @@ np.random.seed(seed)
 torch.manual_seed(seed)
 is_cuda = torch.cuda.is_available()
 
+try:
+    get_ipython().run_line_magic('matplotlib', 'inline')
+    isplot = True
+except:
+    isplot = False
+
 
 # ## Training:
 
-# In[ ]:
+# In[2]:
 
 
 task_id_list = [
@@ -51,37 +57,41 @@ task_id_list = [
 # "M-tanh",
 # "M-softplus",
 # "C-sin",
-"C-tanh",
-# "bounce-states",
+# "C-tanh",
+"bounce-states",
 # "bounce-images",
 ]
 
-num_shots = 10
 exp_id = "C-May9"
-exp_mode = "meta"
-input_size = 1
+exp_mode = "meta"  # Choose from meta, baseline and oracle
 is_VAE = False
 is_uncertainty_net = False
 is_regulated_net = False
 is_load_data = False
 VAE_beta = 0.2
-if task_id_list[0] == "C-sin":
-    statistics_output_neurons = 2
-elif task_id_list[0] == "C-tanh":
-    statistics_output_neurons = 4
-elif task_id_list[0] in ["bounce-states", "bounce-images"]:
+if task_id_list[0] in ["C-sin", "C-tanh"]:
+    statistics_output_neurons = 2 if task_id_list[0] == "C-sin" else 4
+    num_shots = 10
+    input_size = 1
+    output_size = 1
+elif task_id_list[0] == "bounce-states":
     statistics_output_neurons = 8
+    num_shots = 100
+    input_size = 6
+    output_size = 2
+elif task_id_list[0] == "bounce-images":
+    raise
 
-output_size = 1
 lr = 5e-5
-num_train_tasks = 50
-num_test_tasks = 50
-batch_size_task = min(50, num_train_tasks)
-num_backwards = 1
+num_train_tasks = 100
+num_test_tasks = 100
+batch_size_task = num_train_tasks
 num_iter = 10000
 pre_pooling_neurons = 200
 num_context_neurons = 0
 statistics_pooling = "max"
+struct_param_pre_neurons = (60,3)
+struct_param_gen_base_neurons = (60,3)
 main_hidden_neurons = (40, 40)
 patience = 200
 reg_amp = 1e-6
@@ -89,7 +99,7 @@ activation_gen = "leakyRelu"
 activation_model = "leakyRelu"
 optim_mode = "indi"
 loss_core = "huber"
-array_id = "new"
+array_id = 0
 
 exp_id = get_args(exp_id, 1)
 exp_mode = get_args(exp_mode, 2)
@@ -98,24 +108,19 @@ statistics_output_neurons = get_args(statistics_output_neurons, 4, type = "int")
 is_VAE = get_args(is_VAE, 5, type = "bool")
 VAE_beta = get_args(VAE_beta, 6, type = "float")
 lr = get_args(lr, 7, type = "float")
-batch_size_task = get_args(batch_size_task, 8, type = "int")
-pre_pooling_neurons = get_args(pre_pooling_neurons, 9, type = "int")
-num_context_neurons = get_args(num_context_neurons, 10, type = "int")
-statistics_pooling = get_args(statistics_pooling, 11)
-main_hidden_neurons = get_args(main_hidden_neurons, 12, "tuple")
-reg_amp = get_args(reg_amp, 13, type = "float")
-activation_gen = get_args(activation_gen, 14)
-activation_model = get_args(activation_model, 15)
-optim_mode = get_args(optim_mode, 16)
-is_uncertainty_net = get_args(is_uncertainty_net, 17, "bool")
-loss_core = get_args(loss_core, 18)
-array_id = get_args(array_id, 19)
-
-try:
-    get_ipython().run_line_magic('matplotlib', 'inline')
-    isplot = True
-except:
-    isplot = False
+pre_pooling_neurons = get_args(pre_pooling_neurons, 8, type = "int")
+num_context_neurons = get_args(num_context_neurons, 9, type = "int")
+statistics_pooling = get_args(statistics_pooling, 10)
+struct_param_pre_neurons = get_args(struct_param_pre_neurons, 11, "tuple")
+struct_param_gen_base_neurons = get_args(struct_param_gen_base_neurons, 12, "tuple")
+main_hidden_neurons = get_args(main_hidden_neurons, 13, "tuple")
+reg_amp = get_args(reg_amp, 14, type = "float")
+activation_gen = get_args(activation_gen, 15)
+activation_model = get_args(activation_model, 16)
+optim_mode = get_args(optim_mode, 17)
+is_uncertainty_net = get_args(is_uncertainty_net, 18, "bool")
+loss_core = get_args(loss_core, 19)
+array_id = get_args(array_id, 20)
 
 # Settings:
 reg_dict = {"statistics_Net": {"weight": reg_amp, "bias": reg_amp},
@@ -125,34 +130,23 @@ task_settings = {
     "num_examples": 20,
     "test_size": 0.5,
 }
-struct_param_pre = [
-        [60, "Simple_Layer", {}],
-#         [60, "Simple_Layer", {}],
-        [60, "Simple_Layer", {}],
-        [pre_pooling_neurons, "Simple_Layer", {"activation": "linear"}],
-    ]
-struct_param_post = None
-struct_param_gen_base = [
-        [60, "Simple_Layer", {}],
-#         [60, "Simple_Layer", {}],
-        [60, "Simple_Layer", {}],
-]
 isParallel = False
 inspect_interval = 50
 save_interval = 100
-filename = variational_model_PATH + "/trained_models/{0}/Net_{1}_{2}_input_{3}_({4},{5})_stat_{6}_pre_{7}_pool_{8}_context_{9}_hid_{10}_batch_{11}_back_{12}_VAE_{13}_{14}_uncer_{15}_lr_{16}_reg_{17}_actgen_{18}_actmodel_{19}_struct_{20}_{21}_core_{22}_{23}_".format(
-    exp_id, exp_mode, task_id_list, input_size, num_train_tasks, num_test_tasks, statistics_output_neurons, pre_pooling_neurons, statistics_pooling, num_context_neurons, main_hidden_neurons, batch_size_task, num_backwards, is_VAE, VAE_beta, is_uncertainty_net, lr, reg_amp, activation_gen, activation_model, get_struct_str(struct_param_gen_base), optim_mode, loss_core, exp_id)
-make_dir(filename)
-print(filename)
+num_backwards = 1
 
 # Obtain tasks:
 assert len(task_id_list) == 1
 dataset_filename = dataset_PATH + task_id_list[0] + "_{0}-shot.p".format(num_shots)
 tasks = pickle.load(open(dataset_filename, "rb"))
-tasks_train = get_torch_tasks(tasks["tasks_train"], task_id_list[0], is_cuda = is_cuda)
-tasks_test = get_torch_tasks(tasks["tasks_test"], task_id_list[0], num_tasks = num_test_tasks, is_cuda = is_cuda)
+tasks_train = get_torch_tasks(tasks["tasks_train"], task_id_list[0], num_forward_steps = 1, is_cuda = is_cuda)
+tasks_test = get_torch_tasks(tasks["tasks_test"], task_id_list[0], num_tasks = num_test_tasks, num_forward_steps = 1, is_cuda = is_cuda)
 
 # Obtain nets:
+struct_param_pre = [[struct_param_pre_neurons[0], "Simple_Layer", {}] for _ in range(struct_param_pre_neurons[1])]
+struct_param_pre.append([pre_pooling_neurons, "Simple_Layer", {"activation": "linear"}])
+struct_param_post = None
+struct_param_gen_base = [[struct_param_gen_base_neurons[0], "Simple_Layer", {}] for _ in range(struct_param_gen_base_neurons[1])]
 statistics_Net, generative_Net, generative_Net_logstd = get_nets(input_size = input_size, output_size = output_size, main_hidden_neurons = main_hidden_neurons,
                                           pre_pooling_neurons = pre_pooling_neurons, statistics_output_neurons = statistics_output_neurons, num_context_neurons = num_context_neurons,
                                           struct_param_pre = struct_param_pre,
@@ -167,11 +161,8 @@ statistics_Net, generative_Net, generative_Net_logstd = get_nets(input_size = in
                                           is_cuda = is_cuda,
                                          )
 if is_regulated_net:
-    struct_param_regulated_Net = [
-            [40, "Simple_Layer", {}],
-            [40, "Simple_Layer", {}],
-            [1, "Simple_Layer", {"activation": "linear"}],
-    ]
+    struct_param_regulated_Net = [[num_neurons, "Simple_Layer", {}] for num_neurons in main_hidden_neurons]
+    struct_param_regulated_Net.append([1, "Simple_Layer", {"activation": "linear"}])
     generative_Net = Net(input_size = input_size, struct_param = struct_param_regulated_Net, settings = {"activation": activation_model})
 master_model = Master_Model(statistics_Net, generative_Net, generative_Net_logstd, is_cuda = is_cuda)
 
@@ -207,6 +198,15 @@ record_data(data_record, [exp_id, tasks_train, tasks_test, task_id_list, task_se
                           struct_param_gen_base, struct_param_pre, struct_param_post, statistics_pooling, activation_gen, activation_model], 
             ["exp_id", "tasks_train", "tasks_test", "task_id_list", "task_settings", "reg_dict", "is_uncertainty_net", "lr", "pre_pooling_neurons", "num_backwards", "batch_size_task",
              "struct_param_gen_base", "struct_param_pre", "struct_param_post", "statistics_pooling", "activation_gen", "activation_model"])
+
+filename = variational_model_PATH + "/trained_models/{0}/Net_{1}_{2}_input_{3}_({4},{5})_stat_{6}_pre_{7}_pool_{8}_context_{9}_hid_{10}_{11}_{12}_VAE_{13}_{14}_uncer_{15}_lr_{16}_reg_{17}_actgen_{18}_actmodel_{19}_struct_{20}_{21}_core_{22}_{23}_".format(
+    exp_id, exp_mode, task_id_list, input_size, num_train_tasks, num_test_tasks, statistics_output_neurons, pre_pooling_neurons, statistics_pooling, num_context_neurons, main_hidden_neurons, struct_param_pre_neurons, struct_param_gen_base_neurons, num_backwards, is_VAE, VAE_beta, is_uncertainty_net, lr, reg_amp, activation_gen, activation_model, get_struct_str(struct_param_gen_base), optim_mode, loss_core, exp_id)
+make_dir(filename)
+print(filename)
+
+
+# In[ ]:
+
 
 # Training:
 for i in range(num_iter + 1):
@@ -323,7 +323,7 @@ for i in range(num_iter + 1):
         reg_train_list = [data_record["reg"][task_key][-1] for task_key in tasks_train]
         reg_test_list = [data_record["reg"][task_key][-1] for task_key in tasks_test]
         mse_few_shot = plot_few_shot_loss(master_model, tasks_test, isplot = isplot)
-        plot_quick_learn_performance(master_model, tasks_test)
+        plot_quick_learn_performance(master_model, tasks_test, isplot = isplot)
         record_data(data_record, 
                     [np.mean(loss_train_list), np.median(loss_train_list), np.mean(reg_train_list), i,
                      np.mean(loss_test_list), np.median(loss_test_list), np.mean(reg_test_list),
@@ -403,31 +403,33 @@ lr = 1e-3
 
 print(dataset_filename)
 tasks = pickle.load(open(dataset_filename, "rb"))
-tasks_test = get_torch_tasks(tasks["tasks_test"], task_id_list[0], is_cuda = is_cuda)
+tasks_test = get_torch_tasks(tasks["tasks_test"], task_id_list[0], num_forward_steps = 1, is_cuda = is_cuda)
 
 task_keys_all = list(tasks_test.keys())
 mse_list_all = []
-for i in range(int(len(tasks_test) / 50)):
+for i in range(int(len(tasks_test) / 100)):
     print("{0}:".format(i))
-    task_keys_iter = task_keys_all[i * 50: (i + 1) * 50]
+    task_keys_iter = task_keys_all[i * 100: (i + 1) * 100]
     tasks_test_iter = {task_key: tasks_test[task_key] for task_key in task_keys_iter}
-    mse = plot_quick_learn_performance(master_model, tasks_test_iter, lr = lr, epochs = 20)['model_0'].mean(0)
+    mse = plot_quick_learn_performance(master_model, tasks_test_iter, lr = lr, epochs = 20, isplot = isplot)['model_0'].mean(0)
     mse_list_all.append(mse)
-mse_list_all = np.array(mse_list_all)
+info_dict["mse_test"] = mse_list_all
+pickle.dump(info_dict, open(filename + "info.p", "wb"))
 
 
 # In[ ]:
 
 
-plt.figure(figsize = (8,6))
-mse_list_all = np.array(mse_list_all)
-mse_mean = mse_list_all2.mean(0)
-mse_std = mse_list_all2.std(0)
+if isplot:
+    plt.figure(figsize = (8,6))
+    mse_list_all = np.array(mse_list_all)
+    mse_mean = mse_list_all.mean(0)
+    mse_std = mse_list_all.std(0)
 
-plt.fill_between(range(len(mse_mean)), mse_mean - mse_std * 1.96 / np.sqrt(int(len(tasks_test) / 50)), mse_mean + mse_std * 1.96 / np.sqrt(int(len(tasks_test) / 50)), alpha = 0.3)
-plt.plot(range(len(mse_mean)), mse_mean)
-plt.title("Tanh, {0}-shot regression".format(num_shots), fontsize = 20)
-plt.xlabel("Number of gradient steps", fontsize = 18)
-plt.ylabel("Mean Squared Error", fontsize = 18)
-plt.show()
+    plt.fill_between(range(len(mse_mean)), mse_mean - mse_std * 1.96 / np.sqrt(int(len(tasks_test) / 50)), mse_mean + mse_std * 1.96 / np.sqrt(int(len(tasks_test) / 50)), alpha = 0.3)
+    plt.plot(range(len(mse_mean)), mse_mean)
+    plt.title("Tanh, {0}-shot regression".format(num_shots), fontsize = 20)
+    plt.xlabel("Number of gradient steps", fontsize = 18)
+    plt.ylabel("Mean Squared Error", fontsize = 18)
+    plt.show()
 
