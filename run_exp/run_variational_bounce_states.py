@@ -1,3 +1,5 @@
+import os, sys
+
 exp_id=[
 "syn2.0",
 ]
