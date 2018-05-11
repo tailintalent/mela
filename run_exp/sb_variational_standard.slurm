@@ -4,7 +4,6 @@
 #SBATCH -e var/enc1.0/var_%j_%a.err  # output and error file name (%j expands to jobID)
 #SBATCH -N 1        # Number of nodes
 #SBATCH -c 1               # total number of mpi tasks requested
-#SBATCH --gres=gpu:titan-x:1  # GPU jobs
 #SBATCH --mem=16384     # memory (MB)
 #SBATCH --array=0
 #SBATCH --qos=normal
@@ -15,4 +14,4 @@
 
 source activate /om/user/tailin/python3
 echo "My SLURM_ARRAY_TASK_ID: " $SLURM_ARRAY_TASK_ID
-python run_variational_encoder.py $SLURM_ARRAY_TASK_ID
+python run_variational_standard.py $SLURM_ARRAY_TASK_ID

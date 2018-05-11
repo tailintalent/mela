@@ -1,12 +1,12 @@
 import os, sys
 
 exp_id=[
-"enc1.0",
+"syn1.0",
 ]
 
 exp_mode = [
 "meta",
-# "baseline",
+"finetune",
 ]
 
 task_id_list=[
@@ -18,14 +18,17 @@ task_id_list=[
 # '["M-Gaussian"]',
 # '["M-tanh"]',
 # '["M-softplus"]',
+'["C-sin"]',
+'["C-tanh"]',
 # '["bounce-states"]',
-'["bounce-images"]',
+# '["bounce-images"]',
 ]
 
 
 statistics_output_neurons=[
-# 4,
-8,
+2,
+4,
+# 8,
 # 10,
 # 20,
 ]
@@ -42,12 +45,8 @@ VAE_beta=[
 ]
 
 lr=[
-# 5e-5,
+5e-5,
 2e-5,
-]
-
-batch_size_task=[
-100,
 ]
 
 pre_pooling_neurons=[
@@ -58,7 +57,7 @@ pre_pooling_neurons=[
 
 num_context_neurons=[
 0,
-# 4,
+4,
 # 8,
 ]
 
@@ -67,9 +66,17 @@ statistics_pooling=[
 # "mean",
 ]
 
+struct_param_pre_neurons=[
+'\(60,3\)',
+]
+
+struct_param_gen_base_neurons=[
+'\(60,3\)',
+]
+
 main_hidden_neurons=[
-# '(40,40)',
-'\(40,40,40\)',
+'\(40,40\)',
+# '\(40,40,40\)',
 # '(80,80)',
 # '\(80,80,80\)',
 ]
@@ -92,7 +99,7 @@ activation_model=[
 
 optim_mode=[
 "individual",
-# "sum",
+"sum",
 ]
 
 is_uncertainty_net = [
@@ -102,7 +109,12 @@ False,
 
 loss_core=[
 "huber",
-# "mse",
+"mse",
+]
+
+patience=[
+200,
+300,
 ]
 
 def assign_array_id(array_id, param_list):
@@ -124,20 +136,22 @@ param_list = [exp_id,
             is_VAE,
             VAE_beta,
             lr,
-            batch_size_task,
             pre_pooling_neurons,
             num_context_neurons,
             statistics_pooling,
+            struct_param_pre_neurons,
+            struct_param_gen_base_neurons,
             main_hidden_neurons,
             reg_amp,
             activation_gen,
             activation_model,
             optim_mode,
             is_uncertainty_net,
+            patience,
             loss_core,
 ]
 param_chosen = assign_array_id(array_id, param_list)
-exec_str = "python ../variational/variational_meta_learning_encoder.py"
+exec_str = "python ../variational/Experiments/variational_meta_learning_standard.py"
 for param in param_chosen:
     exec_str += " {0}".format(param)
 exec_str += " {0}".format(array_id)
