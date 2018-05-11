@@ -83,6 +83,45 @@ class Master_Model(nn.Module):
         else:
             raise Exception("use_net {0} not recognized!".format(self.use_net))
 
+    def get_predictions(self, X_test, X_train, y_train, is_VAE, is_uncertainty_net, is_regulated_net):
+        results = {}
+        if is_VAE:
+            statistics_mu, statistics_logvar = self.statistics_Net.forward_inputs(X_train, y_train)
+            statistics = sample_Gaussian(statistics_mu, statistics_logvar)
+            results["statistics_mu"] = statistics_mu
+            results["statistics_logvar"] = statistics_logvar
+            results["statistics"] = statistics
+            if is_regulated_net:
+                statistics = get_regulated_statistics(generative_Net, statistics)
+                results["statistics_feed"] = statistics
+            y_pred = self.generative_Net(X_test, statistics)
+            results["y_pred"] = y_pred
+        else:
+            if is_uncertainty_net:
+                statistics_mu, statistics_logvar = self.statistics_Net.forward_inputs(X_train, y_train)
+                results["statistics_mu"] = statistics_mu
+                results["statistics_logvar"] = statistics_logvar
+                results["statistics"] = statistics
+                if is_regulated_net:
+                    statistics_mu = get_regulated_statistics(self.generative_Net, statistics_mu)
+                    statistics_logvar = get_regulated_statistics(self.generative_Net_logstd, statistics_logvar)
+                    results["statistics_mu_feed"] = statistics_mu
+                    results["statistics_logvar_feed"] = statistics_logvar    
+                y_pred = self.generative_Net(X_test, statistics_mu)
+                y_pred_logstd = self.generative_Net_logstd(X_test, statistics_logvar)
+                
+                results["y_pred"] = y_pred
+                results["y_pred_logstd"] = y_pred_logstd
+            else:
+                statistics = self.statistics_Net.forward_inputs(X_train, y_train)
+                results["statistics"] = statistics
+                if is_regulated_net:
+                    statistics = get_regulated_statistics(self.generative_Net, statistics)
+                    results["statistics_feed"] = statistics
+                y_pred = self.generative_Net(X_test, statistics)
+                results["y_pred"] = y_pred
+        return results
+
     def get_regularization(self, source = ["weight", "bias"], target = ["statistics_Net", "generative_Net"], mode = "L1"):
         if target == "all":
             if self.use_net == "generative":
@@ -776,54 +815,67 @@ def get_tasks(task_id_list, num_train, num_test, task_settings = {}, is_cuda = F
     return tasks_train, tasks_test
 
 
-def evaluate(task, statistics_Net, generative_Net, generative_Net_logstd = None, criterion = None, is_VAE = False, is_regulated_net = False, autoencoder = None, **kwargs):
+def evaluate(task, master_model = None, model = None, criterion = None, is_VAE = False, is_regulated_net = False, autoencoder = None, **kwargs):
     if autoencoder is not None:
         forward_steps = kwargs["forward_steps"]
-        forward_steps_idx = torch.LongTensor(np.array(forward_steps) - 1)
-        if statistics_Net.is_cuda:
-            forward_steps_idx = forward_steps_idx.cuda()
+        forward_steps_idx = torch.LongTensor(np.array(forward_steps) - 1)    
         ((X_train_obs, y_train_obs), (X_test_obs, y_test_obs)), _ = task
+        if X_train_obs.is_cuda:
+            forward_steps_idx = forward_steps_idx.cuda()   
         X_train = forward(autoencoder.encode, X_train_obs)
         y_train = forward(autoencoder.encode, y_train_obs[:, forward_steps_idx])
         X_test = forward(autoencoder.encode, X_test_obs)
         y_test = forward(autoencoder.encode, y_test_obs[:, forward_steps_idx])
     else:
         ((X_train, y_train), (X_test, y_test)), _ = task
-    loss_fun = Loss_Fun(core = "mse")
-    if is_VAE:
-        statistics_mu, statistics_logvar = statistics_Net(torch.cat([X_train, y_train], 1))
-        statistics_sampled = sample_Gaussian(statistics_mu, statistics_logvar)
-        y_pred_sampled = generative_Net(X_test, statistics_sampled)
-        loss_sampled, KLD = criterion(y_pred_sampled, y_test, statistics_mu, statistics_logvar)
-        
-        y_pred = generative_Net(X_test, statistics_mu)
-        loss = criterion.criterion(y_pred, y_test)
-        mse = loss_fun(y_pred, y_test)
-        return loss.data[0], loss_sampled.data[0], mse.data[0], KLD.data[0]
-    else:
-        if generative_Net_logstd is None:
-            statistics = statistics_Net(torch.cat([X_train, y_train], 1))
-            if is_regulated_net:
-                statistics = get_regulated_statistics(generative_Net, statistics)
-            if autoencoder is not None:
-                generative_Net.set_latent_param(statistics)
-                y_pred = get_forward_pred(generative_Net, X_train, forward_steps)
-                loss = criterion(X_train, y_pred, X_train_obs, y_train_obs, autoencoder)
-                mse = criterion(X_train, y_pred, X_train_obs, y_train_obs, autoencoder, loss_fun = loss_fun, verbose = True)
-            else:
-                y_pred = generative_Net(X_test, statistics)
-                loss = criterion(y_pred, y_test)
-                mse = loss_fun(y_pred, y_test)
-        else:
-            statistics_mu, statistics_logvar = statistics_Net(torch.cat([X_train, y_train], 1))
-            if is_regulated_net:
-                statistics_mu = get_regulated_statistics(generative_Net, statistics_mu)
-                statistics_logvar = get_regulated_statistics(generative_Net_logstd, statistics_logvar)
-            y_pred = generative_Net(X_test, statistics_mu)
-            y_pred_logstd = generative_Net_logstd(X_test, statistics_logvar)
-            loss = criterion(y_pred, y_test, log_std = y_pred_logstd)
+
+    if master_model is not None:
+        assert model is None
+        loss_fun = Loss_Fun(core = "mse")
+        if is_VAE:
+            statistics_mu, statistics_logvar = master_model.statistics_Net(torch.cat([X_train, y_train], 1))
+            statistics_sampled = sample_Gaussian(statistics_mu, statistics_logvar)
+            y_pred_sampled = master_model.generative_Net(X_test, statistics_sampled)
+            loss_sampled, KLD = criterion(y_pred_sampled, y_test, statistics_mu, statistics_logvar)
+
+            y_pred = master_model.generative_Net(X_test, statistics_mu)
+            loss = criterion.criterion(y_pred, y_test)
             mse = loss_fun(y_pred, y_test)
-        return loss.data[0], loss.data[0], mse.data[0], 0
+            return loss.data[0], loss_sampled.data[0], mse.data[0], KLD.data[0]
+        else:
+            if master_model.generative_Net_logstd is None:
+                statistics = master_model.statistics_Net(torch.cat([X_train, y_train], 1))
+                if is_regulated_net:
+                    statistics = get_regulated_statistics(master_model.generative_Net, statistics)
+                if autoencoder is not None:
+                    master_model.generative_Net.set_latent_param(statistics)
+                    y_pred = get_forward_pred(master_model.generative_Net, X_train, forward_steps)
+                    loss = criterion(X_train, y_pred, X_train_obs, y_train_obs, autoencoder)
+                    mse = criterion(X_train, y_pred, X_train_obs, y_train_obs, autoencoder, loss_fun = loss_fun, verbose = True)
+                else:
+                    y_pred = master_model.generative_Net(X_test, statistics)
+                    loss = criterion(y_pred, y_test)
+                    mse = loss_fun(y_pred, y_test)
+            else:
+                statistics_mu, statistics_logvar = master_model.statistics_Net(torch.cat([X_train, y_train], 1))
+                if is_regulated_net:
+                    statistics_mu = get_regulated_statistics(master_model.generative_Net, statistics_mu)
+                    statistics_logvar = get_regulated_statistics(master_model.generative_Net_logstd, statistics_logvar)
+                y_pred = master_model.generative_Net(X_test, statistics_mu)
+                y_pred_logstd = master_model.generative_Net_logstd(X_test, statistics_logvar)
+                loss = criterion(y_pred, y_test, log_std = y_pred_logstd)
+                mse = loss_fun(y_pred, y_test)
+            return loss.data[0], loss.data[0], mse.data[0], 0
+    else:
+        if autoencoder is not None:
+            y_pred = get_forward_pred(model, X_train, forward_steps)
+            loss = loss_test_sampled = criterion(X_train, y_pred, X_train_obs, y_train_obs, autoencoder)
+            mse = criterion(X_train, y_pred, X_train_obs, y_train_obs, autoencoder, loss_fun = loss_fun, verbose = True)
+        else:
+            y_pred = model(X_test)
+            loss = loss_sampled = criterion(y_pred, y_test)
+            mse = nn.MSELoss()(y_pred, y_test)
+        return loss.data[0], loss_sampled.data[0], mse.data[0], 0     
 
 
 def get_reg(reg_dict, statistics_Net = None, generative_Net = None, autoencoder = None, net = None, is_cuda = False):
@@ -863,7 +915,7 @@ def load_trained_models(filename):
     return statistics_Net, generative_Net, data_record
 
 
-def plot_task_ensembles(tasks, statistics_Net, generative_Net, is_VAE = False, is_regulated_net = False, autoencoder = None, title = None, isplot = True, **kwargs):
+def plot_task_ensembles(tasks, master_model = None, model = None, is_VAE = False, is_uncertainty_net = False, is_regulated_net = False, autoencoder = None, title = None, isplot = True, **kwargs):
     import matplotlib.pyplot as plt
     statistics_list = []
     z_list = []
@@ -871,34 +923,27 @@ def plot_task_ensembles(tasks, statistics_Net, generative_Net, is_VAE = False, i
         if autoencoder is not None:
             forward_steps = kwargs["forward_steps"]
             forward_steps_idx = torch.LongTensor(np.array(forward_steps) - 1)
-            if statistics_Net.is_cuda:
+            ((X_train_obs, y_train_obs), (X_test_obs, y_test_obs)), info = task
+            if X_test_obs.is_cuda:
                 forward_steps_idx = forward_steps_idx.cuda()
-            (_, (X_test_obs, y_test_obs)), info = task
+            X_train = forward(autoencoder.encode, X_train_obs)
+            y_train = forward(autoencoder.encode, y_train_obs[:, forward_steps_idx])
             X_test = forward(autoencoder.encode, X_test_obs)
             y_test = forward(autoencoder.encode, y_test_obs[:, forward_steps_idx])
         else:
-            (_, (X_test, y_test)), info = task 
-        if is_VAE:
-            statistics_mu, statistics_logvar = statistics_Net(torch.cat([X_test, y_test], 1))
-            statistics = sample_Gaussian(statistics_mu, statistics_logvar)
+            ((X_train, y_train), (X_test, y_test)), info = task
+            
+        if master_model is not None:
+            results = master_model.get_predictions(X_test = X_test, X_train = X_train, y_train = y_train, 
+                                                  is_VAE = is_VAE, is_uncertainty_net = is_uncertainty_net, is_regulated_net = is_regulated_net)
+            statistics_list.append(to_np_array(results["statistics"])[0])
         else:
-            statistics = statistics_Net(torch.cat([X_test, y_test], 1))
-            if isinstance(statistics, tuple):
-                statistics = statistics[0]
-        if X_test.is_cuda:
-            statistics_cpu = statistics.cpu()
-        else:
-            statistics_cpu = statistics
-        statistics_list.append(statistics_cpu.data.numpy()[0])
-        if is_regulated_net:
-            statistics = get_regulated_statistics(generative_Net, statistics)
-        y_pred = generative_Net(X_test, statistics)
+            results = {}
+            results["y_pred"] = model(X_test)
+            statistics_list.append([0, 0])
         z_list.append(info["z"])
         if isplot:
-            if X_test.is_cuda:
-                y_pred = y_pred.cpu()
-                y_test = y_test.cpu()
-            plt.plot(y_test.data.numpy()[:,0], y_pred.data.numpy()[:,0], ".", markersize = 1, alpha = 0.5)
+            plt.plot(to_np_array(y_test)[:,0], to_np_array(results["y_pred"])[:,0], ".", markersize = 1, alpha = 0.5)
     if title is not None and isplot:
         plt.title(title)
     if isplot:
@@ -908,8 +953,8 @@ def plot_task_ensembles(tasks, statistics_Net, generative_Net, is_VAE = False, i
     return np.array(statistics_list), np.array(z_list)
 
 
-def plot_individual_tasks(tasks, statistics_Net, generative_Net, generative_Net_logstd = None, max_plots = 24, 
-                          is_VAE = False, is_regulated_net = False, xlim = (-4, 4), sample_times = None):
+def plot_individual_tasks(tasks, master_model = None, model = None, max_plots = 24, 
+                          is_VAE = False, is_uncertainty_net = False, is_regulated_net = False, xlim = (-4, 4), sample_times = None):
     import matplotlib.pyplot as plt
     num_columns = 8
     max_plots = max(num_columns * 3, max_plots)
@@ -932,64 +977,39 @@ def plot_individual_tasks(tasks, statistics_Net, generative_Net, generative_Net_
         ((X_train, y_train), (X_test, y_test)), info = task
         input_size = X_test.size(1)
         chosen_dim = np.random.choice(range(input_size))
-        if is_VAE:
-            statistics, statistics_logvar = statistics_Net(torch.cat([X_train, y_train], 1))
+        
+        if master_model is not None:
+            results = master_model.get_predictions(X_test = X_linspace, X_train = X_train, y_train = y_train, 
+                                                  is_VAE = is_VAE, is_uncertainty_net = is_uncertainty_net, is_regulated_net = is_regulated_net)
+            statistics_list.append(to_np_array(results["statistics"]))
         else:
-            if generative_Net_logstd is None:
-                statistics = statistics_Net(torch.cat([X_train, y_train], 1))
-            else:
-                statistics, statistics_logvar = statistics_Net(torch.cat([X_train, y_train], 1))
-        if X_test.is_cuda:
-            statistics_cpu = statistics.cpu()
-        else:
-            statistics_cpu = statistics
-        statistics_list.append(statistics_cpu.data.numpy().squeeze())
+            results = {}
+            results["y_pred"] = model(X_linspace)
+            statistics_list.append([0,0])
+        
         if task_id not in chosen_id:
             continue
         
         ax = fig.add_subplot(num_rows, num_columns, i + 1)
         if sample_times is None:
             if input_size == 1:
-                if is_regulated_net:
-                    statistics = get_regulated_statistics(generative_Net, statistics)
-                y_pred = generative_Net(X_linspace, statistics)
-                X_linspace_numpy, y_pred_numpy = to_np_array(X_linspace, y_pred)
+                X_linspace_numpy, y_pred_numpy = to_np_array(X_linspace, results["y_pred"])
                 ax.plot(X_linspace_numpy[:, chosen_dim], y_pred_numpy.squeeze(), "-r", markersize = 3, label = "pred")
-                if generative_Net_logstd is not None:
-                    if is_regulated_net:
-                        statistics_logvar = get_regulated_statistics(generative_Net_logstd, statistics_logvar)
-                    y_pred_std = torch.exp(generative_Net_logstd(X_linspace, statistics_logvar))
+                if master_model is not None and master_model.generative_Net_logstd is not None:
+                    y_pred_std = torch.exp(results["y_pred_logstd"])
                     y_pred_std_numpy = to_np_array(y_pred_std)
                     ax.fill_between(X_linspace_numpy[:, chosen_dim], (y_pred_numpy - y_pred_std_numpy).squeeze(), (y_pred_numpy + y_pred_std_numpy).squeeze(), color = "r", alpha = 0.3)
-#             else:
-#                 if is_regulated_net:
-#                     statistics = get_regulated_statistics(generative_Net, statistics)
-#                 y_pred = generative_Net(X_linspace, statistics)
         else:
             y_pred_list = []
             for j in range(sample_times):
-                statistics_sampled = sample_Gaussian(statistics, statistics_logvar)
-                y_pred = generative_Net(X_linspace, statistics)
-                y_pred_list.append(y_pred.data.numpy())
+                statistics_sampled = sample_Gaussian(results["statistics"], results["statistics_logvar"])
+                y_pred = master_model.generative_Net(X_linspace, results["statistics"])
+                y_pred_list.append(to_np_array(y_pred))
             y_pred_list = np.concatenate(y_pred_list, 1)
             y_pred_mean = np.mean(y_pred_list, 1)
             y_pred_std = np.std(y_pred_list, 1)
-            if is_cuda:
-                X_linspace_cpu = X_linspace.cpu()
-                y_pred_mean_cpu = y_pred_mean.cpu()
-                y_pred_std_cpu = y_pred_std.cpu()
-            else:
-                X_linspace_cpu = X_linspace
-                y_pred_mean_cpu = y_pred_mean
-                y_pred_std_cpu = y_pred_std
-            ax.errorbar(X_linspace_cpu.data.numpy()[:, chosen_dim], y_pred_mean_cpu, yerr = y_pred_std_cpu, fmt="-r", markersize = 3, label = "pred")
-        if is_cuda:
-            X_test_cpu = X_test.cpu()
-            y_test_cpu = y_test.cpu()
-        else:
-            X_test_cpu = X_test
-            y_test_cpu = y_test  
-        ax.plot(X_test_cpu.data.numpy()[:, chosen_dim], y_test_cpu.data.numpy().squeeze(), ".", markersize = 3, label = "target")
+            ax.errorbar(to_np_array(X_linspace)[:, chosen_dim], to_np_array(y_pred_mean), yerr = to_np_array(y_pred_std), fmt="-r", markersize = 3, label = "pred")
+        ax.plot(to_np_array(X_test)[:, chosen_dim], to_np_array(y_test).squeeze(), ".", markersize = 3, label = "target")
         
         ax.set_xlabel("x_{0}".format(chosen_dim))
         ax.set_ylabel("y")
@@ -1098,6 +1118,8 @@ def plot_individual_tasks_bounce(tasks, num_examples_show = 40, num_tasks_show =
 
 
 def plot_few_shot_loss(master_model, tasks, isplot = True, autoencoder = None, min_shots = None, **kwargs):
+    if master_model is None:
+        return []
     num_shots_list = [10, 20, 30, 40, 50, 70, 100, 200, 300, 500, 1000]
     mse_list_whole = []
     for task_key, task in tasks.items():
