@@ -375,7 +375,7 @@ def get_env_data(
     return ((X_train, y_train), (X_test, y_test), (reflected_train, reflected_test)), info
 
 
-def get_torch_tasks(tasks, task_id, num_tasks = None, num_forward_steps = None, is_flatten = True, is_cuda = False):
+def get_torch_tasks(tasks, task_key, start_id = 0, num_tasks = None, num_forward_steps = None, is_flatten = True, is_cuda = False):
     tasks_dict = OrderedDict()
     for i, task in enumerate(tasks):
         if num_tasks is not None and i > num_tasks:
@@ -402,7 +402,7 @@ def get_torch_tasks(tasks, task_id, num_tasks = None, num_forward_steps = None, 
             y_train = y_train.cuda()
             X_test = X_test.cuda()
             y_test = y_test.cuda()
-        tasks_dict["{0}_{1}".format(task_id, i)] = [[[X_train, y_train], [X_test, y_test]], z_info]
+        tasks_dict["{0}_{1}".format(task_key, i + start_id)] = [[[X_train, y_train], [X_test, y_test]], z_info]
     return tasks_dict
 
 
