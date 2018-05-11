@@ -68,7 +68,7 @@ task_id_list = [
 exp_id = "C-May10"
 exp_mode = "meta"
 # exp_mode = "finetune"
-# exp_mode = "oracle"
+exp_mode = "oracle"
 is_VAE = False
 is_uncertainty_net = False
 is_regulated_net = False
@@ -442,6 +442,10 @@ for i in range(int(len(tasks_test) / 100)):
     mse_list_all.append(mse)
 info_dict["mse_test"] = mse_list_all
 pickle.dump(info_dict, open(filename + "info.p", "wb"))
+print("mean:")
+print(mse_list_all.mean(0))
+print("std:")
+print(mse_list_all.std(0))
 
 
 # In[ ]:
