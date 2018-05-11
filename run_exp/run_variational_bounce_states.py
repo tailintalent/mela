@@ -1,5 +1,5 @@
 exp_id=[
-"syn1.0",
+"syn2.0",
 ]
 
 exp_mode = [
@@ -16,18 +16,18 @@ task_id_list=[
 # '["M-Gaussian"]',
 # '["M-tanh"]',
 # '["M-softplus"]',
-'["C-sin"]',
-'["C-tanh"]',
-# '["bounce-states"]',
+# '["C-sin"]',
+# '["C-tanh"]',
+'["bounce-states"]',
 # '["bounce-images"]',
 ]
 
 
 statistics_output_neurons=[
 # 2,
-4,
-# 8,
-# 10,
+# 4,
+8,
+# 12,
 # 20,
 ]
 
@@ -44,7 +44,7 @@ VAE_beta=[
 
 lr=[
 5e-5,
-2e-5,
+# 2e-5,
 ]
 
 pre_pooling_neurons=[
@@ -55,7 +55,7 @@ pre_pooling_neurons=[
 
 num_context_neurons=[
 0,
-# 4,
+4,
 # 8,
 ]
 
@@ -66,19 +66,19 @@ statistics_pooling=[
 
 struct_param_pre_neurons=[
 '\(60,3\)',
-'\(60,2\)',
+'\(100,3\)',
 ]
 
 struct_param_gen_base_neurons=[
 '\(60,3\)',
-'\(60,2\)',
+'\(100,3\)',
 ]
 
 main_hidden_neurons=[
 '\(40,40\)',
-# '\(40,40,40\)',
+'\(40,40,40\)',
 # '(80,80)',
-# '\(80,80,80\)',
+'\(80,80,80\)',
 ]
 
 reg_amp=[
@@ -99,7 +99,7 @@ activation_model=[
 
 optim_mode=[
 "indi",
-"sum",
+# "sum",
 ]
 
 is_uncertainty_net = [

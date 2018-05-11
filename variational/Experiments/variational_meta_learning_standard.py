@@ -124,7 +124,7 @@ activation_model = get_args(activation_model, 16)
 optim_mode = get_args(optim_mode, 17)
 is_uncertainty_net = get_args(is_uncertainty_net, 18, "bool")
 loss_core = get_args(loss_core, 19)
-patience = get_args(patience, 20)
+patience = get_args(patience, 20, "int")
 array_id = get_args(array_id, 21)
 
 # Settings:
@@ -134,7 +134,7 @@ task_settings = {
     "test_size": 0.5,
 }
 isParallel = False
-inspect_interval = 50
+inspect_interval = 20
 save_interval = 100
 num_backwards = 1
 
