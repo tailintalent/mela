@@ -12,6 +12,9 @@ from torch.autograd import Variable
 from sklearn.model_selection import train_test_split
 from collections import OrderedDict
 import time
+import sys, os
+sys.path.append(os.path.join(os.path.dirname("__file__"), '..', '..'))
+from AI_scientist.util import sort_two_lists
 
 
 # In[2]:
@@ -42,6 +45,7 @@ def process_object_info(percept_list, chosen_dim = None):
 
 def get_task(
     trajectory,
+    num_examples,
     bouncing_list,
     obs_array = None,
     time_steps = 3,
@@ -52,6 +56,9 @@ def get_task(
     is_cuda = False,
     width = None,
     test_size = 0.2,
+    bounce_focus = False,
+    normalize = True,
+    translation = None,
     ):  
     """Obtain training and testing data from a trajectory"""
     X = []
@@ -99,10 +106,38 @@ def get_task(
     X = X[valid]
     y = y[valid]
     reflect = reflect[valid]
+
+    # Emphasizing trajectories with bouncing:
+    if bounce_focus:
+        X = X[reflect.astype(bool)]
+        y = y[reflect.astype(bool)]
+        reflect = reflect[reflect.astype(bool)]
+    
+    if translation is not None:
+        X[..., 0] = X[..., 0] + translation[0]
+        y[..., 0] = y[..., 0] + translation[0]
+        X[..., 1] = X[..., 1] + translation[1]
+        y[..., 1] = y[..., 1] + translation[1]
+    if normalize:
+        # scale the states to between (0,1):
+        X = X * 0.025  
+        y = y * 0.025
+
+    # Randomly select num_examples of examples:
+    chosen_idx = np.random.choice(range(len(X)), size = num_examples, replace = False)
+    X = X[chosen_idx]
+    y = y[chosen_idx]
+    reflect = reflect[chosen_idx]
+
     if obs_array is not None:
         obs_X = obs_X[valid]
         obs_y = obs_y[valid]
-        
+        if bounce_focus:
+            obs_X = obs_X[reflect.astype(bool)]
+            obs_y = obs_y[reflect.astype(bool)]
+        obs_X = obs_X[chosen_idx]
+        obs_y = obs_y[chosen_idx]
+
         max_value = max(obs_X.max(), obs_y.max())
         obs_X = obs_X / max_value
         obs_y = obs_y / max_value
@@ -202,9 +237,12 @@ def get_env_data(
 
         # Obtain settings from kwargs:
         time_steps = kwargs["time_steps"] if "time_steps" in kwargs else 3
-        forward_steps = kwargs["forward_steps"] if "forward_steps" in kwargs else 1
-        episode_length = kwargs["episode_length"] if "episode_length" in kwargs else 100
+        forward_steps = kwargs["forward_steps"] if "forward_steps" in kwargs else [1]
+        episode_length = kwargs["episode_length"] if "episode_length" in kwargs else 30
         is_flatten = kwargs["is_flatten"] if "is_flatten" in kwargs else False
+        bounce_focus = kwargs["bounce_focus"] if "bounce_focus" in kwargs else True
+        normalize = kwargs["normalize"] if "normalize" in kwargs else True
+        translation = kwargs["translation"] if "translation" in kwargs else None
         render = kwargs["render"] if "render" in kwargs else False
         env_name_split = env_name.split("-")
         if "nobounce" in env_name_split:
@@ -246,7 +284,10 @@ def get_env_data(
         bouncing_list = []
 
         k = 0
-        while k < int(num_examples / episode_length):
+        num_episodes_candidate = max(1, 1.5 * int(num_examples / (episode_length - time_steps - max(forward_steps))))
+        if bounce_focus:
+            num_episodes_candidate * 2
+        while k < num_episodes_candidate:
             obs = env.reset()
             obs_var_candidate = []
             info_list_candidate = []
@@ -295,7 +336,7 @@ def get_env_data(
 
         # Process the info_list into numpy format:
         perception_dict = process_object_info(info_list, chosen_dim = input_dims)
-        bouncing_list = [element[ball_idx][0] if len(element) > 0 else np.NaN for element in bouncing_list]
+        bouncing_list = [len(element[ball_idx]) if len(element) > 0 else np.NaN for element in bouncing_list]
         if data_format == "images":
             obs_array = np.array([element if len(element) > 0 else np.full(obs_var[0].shape, np.nan) for element in obs_var])
         else:
@@ -303,6 +344,7 @@ def get_env_data(
         trajectory0 = perception_dict["ball_{0}".format(ball_idx)]
         width = env_settings["screen_width"] if input_dims == 0 else env_settings["screen_height"]
         ((X_train, y_train), (X_test, y_test), (reflected_train, reflected_test)), info =             get_task(trajectory0,
+                     num_examples = num_examples,
                      bouncing_list = bouncing_list,
                      obs_array = obs_array,
                      time_steps = time_steps,
@@ -311,7 +353,10 @@ def get_env_data(
                      output_dims = output_dims,
                      is_cuda = is_cuda,
                      width = width,
-                     test_size = test_size
+                     test_size = test_size,
+                     bounce_focus = bounce_focus,
+                     normalize = normalize,
+                     translation = translation,
                     )
 
         if "nobounce" in env_name_split:
@@ -330,7 +375,7 @@ def get_env_data(
     return ((X_train, y_train), (X_test, y_test), (reflected_train, reflected_test)), info
 
 
-def get_torch_tasks(tasks, task_id, num_tasks = None, is_cuda = False):
+def get_torch_tasks(tasks, task_id, num_tasks = None, num_forward_steps = None, is_flatten = True, is_cuda = False):
     tasks_dict = OrderedDict()
     for i, task in enumerate(tasks):
         if num_tasks is not None and i > num_tasks:
@@ -340,6 +385,18 @@ def get_torch_tasks(tasks, task_id, num_tasks = None, is_cuda = False):
         y_train = Variable(torch.FloatTensor(y_train_numpy), requires_grad = False)
         X_test = Variable(torch.FloatTensor(X_test_numpy), requires_grad = False)
         y_test = Variable(torch.FloatTensor(y_test_numpy), requires_grad = False)
+        
+        if len(y_train.size()) == 3:
+            if num_forward_steps is not None:
+                y_train = y_train[:, :num_forward_steps, :]
+                y_test = y_test[:, :num_forward_steps, :]
+        
+            if is_flatten:
+                X_train = X_train.contiguous().view(X_train.size(0), -1)
+                y_train = y_train.contiguous().view(y_train.size(0), -1)
+                X_test = X_test.contiguous().view(X_test.size(0), -1)
+                y_test = y_test.contiguous().view(y_test.size(0), -1)
+        
         if is_cuda:
             X_train = X_train.cuda()
             y_train = y_train.cuda()
@@ -355,4 +412,25 @@ def get_numpy_tasks(tasks):
         ((X_train, y_train), (X_test, y_test)), z_info = task
         tasks_save.append([[[X_train.data.numpy(), y_train.data.numpy()], [X_test.data.numpy(), y_test.data.numpy()]], z_info])
     return tasks_save
+
+
+def sort_datapoints(X, y, score, top = None):
+    combined_data = torch.cat([X, y], 1)
+    isTorch = False
+    if isinstance(score, Variable):
+        score = score.squeeze().data.numpy()
+    if isinstance(X, Variable):
+        isTorch = True
+    score_sorted, data_sorted = sort_two_lists(score, combined_data.data.numpy(), reverse = True)
+    data_sorted = np.array(data_sorted)
+    score_sorted = np.array(score_sorted)
+    X_sorted, y_sorted = data_sorted[:,:X.size(1)], data_sorted[:,X.size(1):]
+    if top is not None:
+        X_sorted = X_sorted[:top]
+        y_sorted = y_sorted[:top]
+        score_sorted = score_sorted[:top]
+    if isTorch:
+        X_sorted = Variable(torch.FloatTensor(X_sorted)).contiguous().view(-1,X.size(1))
+        y_sorted = Variable(torch.FloatTensor(y_sorted)).contiguous().view(-1,y.size(1))
+    return X_sorted, y_sorted, score_sorted
 
