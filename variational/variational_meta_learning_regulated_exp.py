@@ -58,6 +58,7 @@ task_id_list = [
 # "bounce-images",
 ]
 
+num_shots = 10
 exp_id = "C-May8"
 exp_mode = "meta"
 input_size = 1
@@ -84,13 +85,13 @@ pre_pooling_neurons = 200
 num_context_neurons = 0
 statistics_pooling = "max"
 main_hidden_neurons = (40, 40)
-patience = 300
+patience = 200
 reg_amp = 1e-6
 activation_gen = "leakyRelu"
 activation_model = "leakyRelu"
 optim_mode = "indi"
 loss_core = "huber"
-array_id = "0"
+array_id = "new"
 
 exp_id = get_args(exp_id, 1)
 exp_mode = get_args(exp_mode, 2)
@@ -140,7 +141,7 @@ struct_param_gen_base = [
 ]
 isParallel = False
 inspect_interval = 50
-save_interval = 200
+save_interval = 100
 filename = variational_model_PATH + "/trained_models/{0}/Net_{1}_{2}_input_{3}_({4},{5})_stat_{6}_pre_{7}_pool_{8}_context_{9}_hid_{10}_batch_{11}_back_{12}_VAE_{13}_{14}_uncer_{15}_lr_{16}_reg_{17}_actgen_{18}_actmodel_{19}_struct_{20}_{21}_core_{22}_{23}_".format(
     exp_id, exp_mode, task_id_list, input_size, num_train_tasks, num_test_tasks, statistics_output_neurons, pre_pooling_neurons, statistics_pooling, num_context_neurons, main_hidden_neurons, batch_size_task, num_backwards, is_VAE, VAE_beta, is_uncertainty_net, lr, reg_amp, activation_gen, activation_model, get_struct_str(struct_param_gen_base), optim_mode, loss_core, exp_id)
 make_dir(filename)
@@ -148,7 +149,7 @@ print(filename)
 
 # Obtain tasks:
 assert len(task_id_list) == 1
-dataset_filename = dataset_PATH + task_id_list[0] + ".p"
+dataset_filename = dataset_PATH + task_id_list[0] + "_{0}-shot.p".format(num_shots)
 tasks = pickle.load(open(dataset_filename, "rb"))
 tasks_train = get_torch_tasks(tasks["tasks_train"], task_id_list[0], is_cuda = is_cuda)
 tasks_test = get_torch_tasks(tasks["tasks_test"], task_id_list[0], num_tasks = num_test_tasks, is_cuda = is_cuda)
@@ -228,21 +229,21 @@ for i in range(num_iter + 1):
                     statistics = sample_Gaussian(statistics_mu, statistics_logvar)
                     if is_regulated_net:
                         statistics = get_regulated_statistics(generative_Net, statistics)
-                    y_pred = generative_Net(X_train, statistics)
-                    loss, KLD = criterion(y_pred, y_train, mu = statistics_mu, logvar = statistics_logvar)
+                    y_pred = generative_Net(X_test, statistics)
+                    loss, KLD = criterion(y_pred, y_test, mu = statistics_mu, logvar = statistics_logvar)
                     KLD_total = KLD_total + KLD
                 else:
                     if is_uncertainty_net:
                         statistics_mu, statistics_logvar = statistics_Net(torch.cat([X_train, y_train], 1))
-                        y_pred = generative_Net(X_train, statistics_mu)
-                        y_pred_logstd = generative_Net_logstd(X_train, statistics_logvar)
-                        loss = criterion(y_pred, y_train, log_std = y_pred_logstd)
+                        y_pred = generative_Net(X_test, statistics_mu)
+                        y_pred_logstd = generative_Net_logstd(X_test, statistics_logvar)
+                        loss = criterion(y_pred, y_test, log_std = y_pred_logstd)
                     else:
                         statistics = statistics_Net(torch.cat([X_train, y_train], 1))
                         if is_regulated_net:
                             statistics = get_regulated_statistics(generative_Net, statistics)
-                        y_pred = generative_Net(X_train, statistics)
-                        loss = criterion(y_pred, y_train)
+                        y_pred = generative_Net(X_test, statistics)
+                        loss = criterion(y_pred, y_test)
                 reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, is_cuda = is_cuda)
                 loss = loss + reg
                 loss.backward(retain_graph = True)
@@ -266,19 +267,19 @@ for i in range(num_iter + 1):
             if is_VAE:
                 statistics_mu, statistics_logvar = statistics_Net(torch.cat([X_train, y_train], 1))
                 statistics = sample_Gaussian(statistics_mu, statistics_logvar)
-                y_pred = generative_Net(X_train, statistics)
-                loss, KLD = criterion(y_pred, y_train, mu = statistics_mu, logvar = statistics_logvar)
+                y_pred = generative_Net(X_test, statistics)
+                loss, KLD = criterion(y_pred, y_test, mu = statistics_mu, logvar = statistics_logvar)
                 loss = loss + KLD
             else:
                 if is_uncertainty_net:
                     statistics_mu, statistics_logvar = statistics_Net(torch.cat([X_train, y_train], 1))
-                    y_pred = generative_Net(X_train, statistics_mu)
-                    y_pred_logstd = generative_Net_logstd(X_train, statistics_logvar)
-                    loss = criterion(y_pred, y_train, log_std = y_pred_logstd)
+                    y_pred = generative_Net(X_test, statistics_mu)
+                    y_pred_logstd = generative_Net_logstd(X_test, statistics_logvar)
+                    loss = criterion(y_pred, y_test, log_std = y_pred_logstd)
                 else:
                     statistics = statistics_Net(torch.cat([X_train, y_train], 1))
-                    y_pred = generative_Net(X_train, statistics)
-                    loss = criterion(y_pred, y_train)
+                    y_pred = generative_Net(X_test, statistics)
+                    loss = criterion(y_pred, y_test)
             reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, is_cuda = is_cuda)
             loss_total = loss_total + loss + reg
         loss_total.backward()
@@ -298,7 +299,6 @@ for i in range(num_iter + 1):
         print("=" * 50)
         print("training tasks:")
         for task_key, task in tasks_train.items():
-            (_, (X_test, y_test)), _ = task
             loss_test, loss_test_sampled, mse, KLD_test = evaluate(task, statistics_Net, generative_Net, generative_Net_logstd = generative_Net_logstd, criterion = criterion, is_VAE = is_VAE, is_regulated_net = is_regulated_net)
             reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, is_cuda = is_cuda).data[0]
             data_record["loss"][task_key].append(loss_test)
@@ -308,7 +308,6 @@ for i in range(num_iter + 1):
             data_record["KLD"][task_key].append(KLD_test)
             print('{0}\ttrain\t{1}  \tloss: {2:.5f}\tloss_sampled:{3:.5f} \tmse:{4:.5f}\tKLD:{5:.6f}\treg:{6:.6f}'.format(i, task_key, loss_test, loss_test_sampled, mse, KLD_test, reg))
         for task_key, task in tasks_test.items():
-            (_, (X_test, y_test)), _ = task
             loss_test, loss_test_sampled, mse, KLD_test = evaluate(task, statistics_Net, generative_Net, generative_Net_logstd = generative_Net_logstd, criterion = criterion, is_VAE = is_VAE, is_regulated_net = is_regulated_net)
             reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, is_cuda = is_cuda).data[0]
             data_record["loss"][task_key].append(loss_test)
@@ -395,4 +394,41 @@ if isplot:
     plt.show()
 print("completed")
 sys.stdout.flush()
+
+
+# ## Testing:
+
+# In[ ]:
+
+
+lr = 1e-3
+
+print(dataset_filename)
+tasks = pickle.load(open(dataset_filename, "rb"))
+tasks_test = get_torch_tasks(tasks["tasks_test"], task_id_list[0], is_cuda = is_cuda)
+
+task_keys_all = list(tasks_test.keys())
+mse_list_all = []
+for i in range(int(len(tasks_test) / 100)):
+    print("{0}:".format(i))
+    task_keys_iter = task_keys_all[i * 100: (i + 1) * 100]
+    tasks_test_iter = {task_key: tasks_test[task_key] for task_key in task_keys_iter}
+    mse = plot_quick_learn_performance(master_model, tasks_test_iter, lr = lr, epochs = 20)['model_0'].mean(0)
+    mse_list_all.append(mse)
+
+
+# In[5]:
+
+
+plt.figure(figsize = (8,6))
+mse_list_all = np.array(mse_list_all)
+mse_mean = mse_list_all.mean(0)
+mse_std = mse_list_all.std(0)
+
+plt.fill_between(range(len(mse_mean)), mse_mean - mse_std * 1.96 / np.sqrt(int(len(tasks_test) / 100)), mse_mean + mse_std * 1.96 / np.sqrt(int(len(tasks_test) / 100)), alpha = 0.3)
+plt.plot(range(len(mse_mean)), mse_mean)
+plt.title("Tanh, 10-shot regression", fontsize = 20)
+plt.xlabel("Number of gradient steps", fontsize = 18)
+plt.ylabel("Mean Squared Error", fontsize = 18)
+plt.show()
 
