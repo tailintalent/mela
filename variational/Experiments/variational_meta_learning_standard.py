@@ -60,15 +60,15 @@ task_id_list = [
 # "M-tanh",
 # "M-softplus",
 # "C-sin",
-# "C-tanh",
-"bounce-states",
+"C-tanh",
+# "bounce-states",
 # "bounce-images",
 ]
 
 exp_id = "C-May10"
 exp_mode = "meta"
 # exp_mode = "finetune"
-exp_mode = "oracle"
+# exp_mode = "oracle"
 is_VAE = False
 is_uncertainty_net = False
 is_regulated_net = False
@@ -89,11 +89,6 @@ elif task_id_list[0] == "bounce-states":
     output_size = 2
 elif task_id_list[0] == "bounce-images":
     raise
-    
-is_oracle = (exp_mode == "oracle")
-if is_oracle:
-    input_size += z_size
-print("exp_mode: {0}".format(exp_mode))
 
 lr = 5e-5
 num_train_tasks = 100
@@ -145,6 +140,10 @@ isParallel = False
 inspect_interval = 20
 save_interval = 100
 num_backwards = 1
+is_oracle = (exp_mode == "oracle")
+if is_oracle:
+    input_size += z_size
+print("exp_mode: {0}".format(exp_mode))
 
 # Obtain tasks:
 assert len(task_id_list) == 1
@@ -430,7 +429,7 @@ lr = 1e-3
 
 print(dataset_filename)
 tasks = pickle.load(open(dataset_filename, "rb"))
-tasks_test = get_torch_tasks(tasks["tasks_test"], task_id_list[0], num_forward_steps = 1, is_cuda = is_cuda)
+tasks_test = get_torch_tasks(tasks["tasks_test"], task_id_list[0], start_id = num_train_tasks, num_forward_steps = 1, is_oracle = is_oracle, is_cuda = is_cuda)
 
 task_keys_all = list(tasks_test.keys())
 mse_list_all = []
