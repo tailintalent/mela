@@ -83,7 +83,7 @@ class Master_Model(nn.Module):
         else:
             raise Exception("use_net {0} not recognized!".format(self.use_net))
 
-    def get_predictions(self, X_test, X_train, y_train, is_VAE, is_uncertainty_net, is_regulated_net):
+    def get_predictions(self, X_test, X_train, y_train, is_VAE = False, is_uncertainty_net = False, is_regulated_net = False):
         results = {}
         if is_VAE:
             statistics_mu, statistics_logvar = self.statistics_Net.forward_inputs(X_train, y_train)

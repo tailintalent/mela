@@ -151,7 +151,7 @@ assert len(task_id_list) == 1
 dataset_filename = dataset_PATH + task_id_list[0] + "_{0}-shot.p".format(num_shots)
 tasks = pickle.load(open(dataset_filename, "rb"))
 tasks_train = get_torch_tasks(tasks["tasks_train"], task_id_list[0], num_forward_steps = 1, is_oracle = is_oracle, is_cuda = is_cuda)
-tasks_test = get_torch_tasks(tasks["tasks_test"], task_id_list[0], num_tasks = num_test_tasks, num_forward_steps = 1, is_oracle = is_oracle, is_cuda = is_cuda)
+tasks_test = get_torch_tasks(tasks["tasks_test"], task_id_list[0], start_id = num_train_tasks, num_tasks = num_test_tasks, num_forward_steps = 1, is_oracle = is_oracle, is_cuda = is_cuda)
 
 # Obtain nets:
 all_keys = list(tasks_train.keys()) + list(tasks_test.keys())
@@ -438,7 +438,7 @@ for i in range(int(len(tasks_test) / 100)):
     print("{0}:".format(i))
     task_keys_iter = task_keys_all[i * 100: (i + 1) * 100]
     tasks_test_iter = {task_key: tasks_test[task_key] for task_key in task_keys_iter}
-    mse = plot_quick_learn_performance(master_model, tasks_test_iter, lr = lr, epochs = 20, isplot = isplot)['model_0'].mean(0)
+    mse = plot_quick_learn_performance(master_model if master_model is not None else model, tasks_test_iter, lr = lr, epochs = 20, isplot = isplot)['model_0'].mean(0)
     mse_list_all.append(mse)
 info_dict["mse_test"] = mse_list_all
 pickle.dump(info_dict, open(filename + "info.p", "wb"))
@@ -457,7 +457,7 @@ if isplot:
     mse_mean = mse_list_all.mean(0)
     mse_std = mse_list_all.std(0)
 
-    plt.fill_between(range(len(mse_mean)), mse_mean - mse_std * 1.96 / np.sqrt(int(len(tasks_test) / 50)), mse_mean + mse_std * 1.96 / np.sqrt(int(len(tasks_test) / 50)), alpha = 0.3)
+    plt.fill_between(range(len(mse_mean)), mse_mean - mse_std * 1.96 / np.sqrt(int(len(tasks_test) / 100)), mse_mean + mse_std * 1.96 / np.sqrt(int(len(tasks_test) / 100)), alpha = 0.3)
     plt.plot(range(len(mse_mean)), mse_mean)
     plt.title("Tanh, {0}-shot regression".format(num_shots), fontsize = 20)
     plt.xlabel("Number of gradient steps", fontsize = 18)
