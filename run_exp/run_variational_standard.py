@@ -1,12 +1,13 @@
 import os, sys
 
 exp_id=[
-"syn1.0",
+"syn1.02",
 ]
 
 exp_mode = [
 "meta",
-# "finetune",
+#"finetune",
+#"oracle",
 ]
 
 task_id_list=[
@@ -26,7 +27,7 @@ task_id_list=[
 
 
 statistics_output_neurons=[
-# 2,
+2,
 4,
 # 8,
 # 10,
@@ -34,7 +35,7 @@ statistics_output_neurons=[
 ]
 
 is_VAE=[
-# True,
+True,
 False,
 ]
 
@@ -45,19 +46,21 @@ VAE_beta=[
 ]
 
 lr=[
+2e-4,
+1e-4,
 5e-5,
-2e-5,
+#2e-5,
 ]
 
 pre_pooling_neurons=[
 200,
-400,
+#300,
 # 600,
 ]
 
 num_context_neurons=[
 0,
-# 4,
+4,
 # 8,
 ]
 
@@ -68,12 +71,14 @@ statistics_pooling=[
 
 struct_param_pre_neurons=[
 '\(60,3\)',
-'\(60,2\)',
+#'\(60,2\)',
 ]
 
 struct_param_gen_base_neurons=[
-'\(60,3\)',
+#'\(60,3\)',
+'\(30,2\)',
 '\(60,2\)',
+'\(120,2\)',
 ]
 
 main_hidden_neurons=[
@@ -84,7 +89,7 @@ main_hidden_neurons=[
 ]
 
 reg_amp=[
-# 1e-6,
+#1e-5,
 1e-6,
 # 0,
 ]
@@ -101,7 +106,7 @@ activation_model=[
 
 optim_mode=[
 "indi",
-"sum",
+#"sum",
 ]
 
 is_uncertainty_net = [
@@ -115,7 +120,7 @@ loss_core=[
 ]
 
 patience=[
-# 200,
+200,
 300,
 ]
 

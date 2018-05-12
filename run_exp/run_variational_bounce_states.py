@@ -1,7 +1,7 @@
 import os, sys
 
 exp_id=[
-"syn2.0",
+"syn2.01",
 ]
 
 exp_mode = [
@@ -29,7 +29,7 @@ statistics_output_neurons=[
 # 2,
 # 4,
 8,
-# 12,
+12,
 # 20,
 ]
 
@@ -84,8 +84,8 @@ main_hidden_neurons=[
 ]
 
 reg_amp=[
-# 1e-6,
-1e-6,
+2e-9,
+1e-8,
 # 0,
 ]
 
