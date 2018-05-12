@@ -449,3 +449,21 @@ def sort_datapoints(X, y, score, top = None):
         y_sorted = Variable(torch.FloatTensor(y_sorted)).contiguous().view(-1,y.size(1))
     return X_sorted, y_sorted, score_sorted
 
+
+def predict_forward(model, X, num_forward_steps = 1):
+    current_state = X
+    pred_list = []
+    for i in range(num_forward_steps):
+        pred = model(current_state)
+        pred_list.append(pred)
+        current_state = torch.cat([current_state[:, 2:], pred], 1)
+    preds = torch.cat(pred_list, 1)
+    return preds
+
+
+def reshape_time_series(tensor):
+    if isinstance(tensor, np.ndarray):
+        return tensor.reshape(tensor.shape[0], -1, 2)
+    else:
+        return tensor.view(tensor.size(0), -1, 2)
+

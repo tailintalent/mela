@@ -60,12 +60,12 @@ task_id_list = [
 # "M-tanh",
 # "M-softplus",
 # "C-sin",
-"C-tanh",
-# "bounce-states",
+# "C-tanh",
+"bounce-states",
 # "bounce-images",
 ]
 
-exp_id = "C-May10"
+exp_id = "C-May12"
 exp_mode = "meta"
 # exp_mode = "finetune"
 # exp_mode = "oracle"
@@ -81,12 +81,14 @@ if task_id_list[0] in ["C-sin", "C-tanh"]:
     num_shots = 10
     input_size = 1
     output_size = 1
+    reg_amp = 1e-6
 elif task_id_list[0] == "bounce-states":
     statistics_output_neurons = 8
     num_shots = 100
     z_size = 8
     input_size = 6
     output_size = 2
+    reg_amp = 1e-8
 elif task_id_list[0] == "bounce-images":
     raise
 
@@ -101,7 +103,6 @@ statistics_pooling = "max"
 struct_param_pre_neurons = (60,3)
 struct_param_gen_base_neurons = (60,3)
 main_hidden_neurons = (40, 40)
-reg_amp = 1e-6
 activation_gen = "leakyRelu"
 activation_model = "leakyRelu"
 optim_mode = "indi"
@@ -327,7 +328,7 @@ for i in range(num_iter + 1):
             data_record["mse"][task_key].append(mse)
             data_record["reg"][task_key].append(reg)
             data_record["KLD"][task_key].append(KLD_test)
-            print('{0}\ttrain\t{1}  \tloss: {2:.5f}\tloss_sampled:{3:.5f} \tmse:{4:.5f}\tKLD:{5:.6f}\treg:{6:.6f}'.format(i, task_key, loss_test, loss_test_sampled, mse, KLD_test, reg))
+            print('{0}\ttrain\t{1}  \tloss: {2:.9f}\tloss_sampled:{3:.9f} \tmse:{4:.9f}\tKLD:{5:.9f}\treg:{6:.9f}'.format(i, task_key, loss_test, loss_test_sampled, mse, KLD_test, reg))
         for task_key, task in tasks_test.items():
             loss_test, loss_test_sampled, mse, KLD_test = evaluate(task, master_model = master_model, model = model, criterion = criterion, is_VAE = is_VAE, is_regulated_net = is_regulated_net)
             reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, is_cuda = is_cuda).data[0]
@@ -336,7 +337,7 @@ for i in range(num_iter + 1):
             data_record["mse"][task_key].append(mse)
             data_record["reg"][task_key].append(reg)
             data_record["KLD"][task_key].append(KLD_test)
-            print('{0}\ttest\t{1}  \tloss: {2:.5f}\tloss_sampled:{3:.5f} \tmse:{4:.5f}\tKLD:{5:.6f}\treg:{6:.6f}'.format(i, task_key, loss_test, loss_test_sampled, mse, KLD_test, reg))
+            print('{0}\ttest\t{1}  \tloss: {2:.9f}\tloss_sampled:{3:.9f} \tmse:{4:.9f}\tKLD:{5:.9f}\treg:{6:.9f}'.format(i, task_key, loss_test, loss_test_sampled, mse, KLD_test, reg))
         loss_train_list = [data_record["loss"][task_key][-1] for task_key in tasks_train]
         loss_test_list = [data_record["loss"][task_key][-1] for task_key in tasks_test]
         loss_train_sampled_list = [data_record["loss_sampled"][task_key][-1] for task_key in tasks_train]
@@ -458,7 +459,7 @@ if isplot:
 
     plt.fill_between(range(len(mse_mean)), mse_mean - mse_std * 1.96 / np.sqrt(int(len(tasks_test) / 100)), mse_mean + mse_std * 1.96 / np.sqrt(int(len(tasks_test) / 100)), alpha = 0.3)
     plt.plot(range(len(mse_mean)), mse_mean)
-    plt.title("Tanh, {0}-shot regression".format(num_shots), fontsize = 20)
+    plt.title("{0}, {1}-shot regression".format(task_id_list[0], num_shots), fontsize = 20)
     plt.xlabel("Number of gradient steps", fontsize = 18)
     plt.ylabel("Mean Squared Error", fontsize = 18)
     plt.show()

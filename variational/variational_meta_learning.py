@@ -26,7 +26,7 @@ from AI_scientist.settings.a2c_env_settings import ENV_SETTINGS_CHOICE
 from AI_scientist.settings.global_param import COLOR_LIST
 from AI_scientist.pytorch.net import Net
 from AI_scientist.pytorch.util_pytorch import get_activation, get_optimizer, get_criterion, Loss_Fun, to_Variable, to_np_array
-from AI_scientist.variational.util_variational import sort_datapoints
+from AI_scientist.variational.util_variational import sort_datapoints, predict_forward, reshape_time_series
 
 
 # In[2]:
@@ -149,12 +149,14 @@ class Master_Model(nn.Module):
                 raise Exception("target element {0} not recognized!".format(target_ele))
         return reg
 
-    def latent_param_quick_learn(self, X, y, validation_data, epochs = 10, batch_size = 128, lr = 1e-2, optim_type = "LBFGS"):
-        return self.generative_Net.latent_param_quick_learn(X = X, y = y, validation_data = validation_data, 
+    def latent_param_quick_learn(self, X, y, validation_data, loss_core = "huber", epochs = 10, batch_size = 128, lr = 1e-2, optim_type = "LBFGS", reset_latent_param = False):
+        if reset_latent_param:
+            self.get_statistics(X, y)
+        return self.generative_Net.latent_param_quick_learn(X = X, y = y, validation_data = validation_data, loss_core = loss_core,
                                                             epochs = epochs, batch_size = batch_size, lr = lr, optim_type = optim_type)
 
-    def clone_net_quick_learn(self, X, y, validation_data, batch_size = 128, epochs = 40, lr = 1e-3, optim_type = "adam"):
-        mse_list, self.cloned_net = quick_learn(self.cloned_net, X, y, validation_data, loss_core = "huber", batch_size = batch_size, epochs = epochs, lr = lr, optim_type = optim_type)
+    def clone_net_quick_learn(self, X, y, validation_data, loss_core = "huber", epochs = 40, batch_size = 128, lr = 1e-3, optim_type = "adam"):
+        mse_list, self.cloned_net = quick_learn(self.cloned_net, X, y, validation_data, loss_core = loss_core, batch_size = batch_size, epochs = epochs, lr = lr, optim_type = optim_type)
         return mse_list
 
 
@@ -445,10 +447,10 @@ class Generative_Net(nn.Module):
             self.latent_param = latent_param
     
     
-    def latent_param_quick_learn(self, X, y, validation_data, batch_size = 128, epochs = 10, lr = 1e-2, optim_type = "LBFGS"):
+    def latent_param_quick_learn(self, X, y, validation_data, loss_core = "huber", epochs = 10, batch_size = 128, lr = 1e-2, optim_type = "LBFGS"):
         assert self.learnable_latent_param is True, "To quick-learn latent_param, you must set learnable_latent_param as True!"
         self.latent_param_optimizer = get_optimizer(optim_type = optim_type, lr = lr, parameters = [self.latent_param])
-        self.criterion = get_criterion("huber")
+        self.criterion = get_criterion(loss_core)
         loss_list = []
         X_test, y_test = validation_data
         batch_size = min(batch_size, len(X))
@@ -459,6 +461,10 @@ class Generative_Net(nn.Module):
 
         dataset_train = data_utils.TensorDataset(X, y)
         train_loader = data_utils.DataLoader(dataset_train, batch_size = batch_size, shuffle = True)
+        
+        y_pred_test = self(X_test)
+        loss = get_criterion("mse")(y_pred_test, y_test)
+        loss_list.append(loss.data[0])
         for i in range(epochs):
             for batch_idx, (X_batch, y_batch) in enumerate(train_loader):
                 X_batch = Variable(X_batch)
@@ -1032,7 +1038,7 @@ def plot_individual_tasks(tasks, master_model = None, model = None, max_plots = 
 
 def plot_individual_tasks_bounce(
     tasks,
-    num_examples_show = 40,
+    num_examples_show = 30,
     num_tasks_show = 6,
     master_model = None,
     model = None,
@@ -1040,7 +1046,9 @@ def plot_individual_tasks_bounce(
     num_shots = None,
     highlight_top = None,
     valid_input_dims = None,
-    **kwargs
+    target_forward_steps = 1,
+    eval_forward_steps = 1,
+    kwargs = {},
     ):
     import matplotlib.pylab as plt
     fig = plt.figure(figsize = (25, num_tasks_show / 3 * 8))
@@ -1048,7 +1056,7 @@ def plot_individual_tasks_bounce(
     tasks_key_show = np.random.choice(list(tasks.keys()), min(num_tasks_show, len(tasks)), replace = False)
     for k, task_key in enumerate(tasks_key_show):
         if autoencoder is not None:
-            forward_steps = kwargs["forward_steps"]
+            forward_steps = list(range(1, num_forward_steps + 1))
             forward_steps_idx = torch.LongTensor(np.array(forward_steps) - 1)
             if autoencoder.is_cuda:
                 forward_steps_idx = forward_steps_idx.cuda()
@@ -1078,31 +1086,30 @@ def plot_individual_tasks_bounce(
         # Get model prediction:
         if master_model is not None:
             if num_shots is None:
-                statistics = master_model.statistics_Net.forward_inputs(X_train, y_train)
+                statistics = master_model.statistics_Net.forward_inputs(X_train, y_train[:, :target_forward_steps * 2])
             else:
                 idx = torch.LongTensor(np.random.choice(range(len(X_train)), min(len(X_train), num_shots), replace = False))
                 if is_cuda:
                     idx = idx.cuda()
-                statistics = master_model.statistics_Net.forward_inputs(X_train[idx], y_train[idx])
+                statistics = master_model.statistics_Net.forward_inputs(X_train[idx], y_train[idx, :target_forward_steps * 2])
             if isinstance(statistics, tuple):
                 statistics = statistics[0]
-            y_pred = master_model.generative_Net(X_test, statistics)
-            y_pred_numpy = to_np_array(y_pred)
-            if len(y_pred_numpy.shape) == 2:
-                y_pred_numpy = y_pred_numpy.reshape(-1, int(y_pred_numpy.shape[1] / 2), 2)
+
+            master_model.generative_Net.set_latent_param(statistics)
+            model_core = master_model.generative_Net
 
             # Prediction for highlighted examples:
             if highlight_top is not None:
-                y_sorted_pred = master_model.generative_Net(to_Variable(X_sorted.reshape(X_sorted.shape[0], -1), is_cuda = is_cuda), statistics)
+                y_sorted_pred = model_core(to_Variable(X_sorted.reshape(X_sorted.shape[0], -1), is_cuda = is_cuda))
                 y_sorted_pred = to_np_array(y_sorted_pred)
                 if len(y_sorted_pred.shape) == 2:
                     y_sorted_pred = y_sorted_pred.reshape(-1, int(y_sorted_pred.shape[1] / 2), 2)
         else:
-            if model is not None:
-                y_pred = model(X_test)
-                y_pred_numpy = to_np_array(y_pred)
-                if len(y_pred_numpy.shape) == 2:
-                    y_pred_numpy = y_pred_numpy.reshape(-1, int(y_pred_numpy.shape[1] / 2), 2)
+            assert model is not None
+            model_core = model
+
+        preds = predict_forward(model_core, X_test, num_forward_steps = eval_forward_steps)
+        y_pred_numpy = to_np_array(reshape_time_series(preds))
 
         # Plotting:
         ax = fig.add_subplot(int(np.ceil(num_tasks_show / float(3))), 3, k + 1)
@@ -1208,18 +1215,26 @@ def plot_few_shot_loss(master_model, tasks, isplot = True, autoencoder = None, m
     return mse_list_whole
 
 
-def plot_quick_learn_performance(models, tasks, epochs = 50, lr = 1e-3, batch_size = 128, isplot = True, scale = "normal"):
+def plot_quick_learn_performance(models, tasks, learning_type = "clone_net", loss_core = "huber", epochs = 50, lr = 1e-3, batch_size = 128, optim_type = "adam", isplot = True, scale = "normal"):
     if not isinstance(models, dict):
         models = {"model_0": models}
     mse_dict_whole = {model_key: [] for model_key in models.keys()}
     for model_key, model in models.items():
         for task_key, task in tasks.items():
             ((X_train, y_train), (X_test, y_test)), _ = task
-            if model.__class__.__name__ == "Master_Model":
-                model_core = model.get_clone_net(X_train, y_train)
+            if learning_type == "clone_net":
+                if model.__class__.__name__ == "Master_Model":
+                    model_core = model.get_clone_net(X_train, y_train)
+                else:
+                    model_core = model
+                mse_list = quick_learn(model_core, X_train, y_train, validation_data = (X_test, y_test), loss_core = loss_core, 
+                                       batch_size = batch_size, epochs = epochs, lr = lr, optim_type = optim_type)[0]
+            elif learning_type == "latent_param":
+                mse_list = model.latent_param_quick_learn(X_train, y_train, validation_data = (X_test, y_test), loss_core = loss_core, 
+                                                          epochs = epochs, batch_size = batch_size, lr = lr, optim_type = optim_type, reset_latent_param = True)
             else:
-                model_core = model
-            mse_list = quick_learn(model_core, X_train, y_train, validation_data = (X_test, y_test), loss_core = "huber", batch_size = batch_size, epochs = epochs, lr = lr, optim_type = "adam")[0]
+                raise
+            
             mse_dict_whole[model_key].append(mse_list)
         mse_dict_whole[model_key] = np.array(mse_dict_whole[model_key])
     epoch_list = list(range(epochs + 1))
