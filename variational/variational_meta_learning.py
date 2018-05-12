@@ -1056,7 +1056,7 @@ def plot_individual_tasks_bounce(
     tasks_key_show = np.random.choice(list(tasks.keys()), min(num_tasks_show, len(tasks)), replace = False)
     for k, task_key in enumerate(tasks_key_show):
         if autoencoder is not None:
-            forward_steps = list(range(1, num_forward_steps + 1))
+            forward_steps = list(range(1, eval_forward_steps + 1))
             forward_steps_idx = torch.LongTensor(np.array(forward_steps) - 1)
             if autoencoder.is_cuda:
                 forward_steps_idx = forward_steps_idx.cuda()

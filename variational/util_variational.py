@@ -15,6 +15,7 @@ import time
 import sys, os
 sys.path.append(os.path.join(os.path.dirname("__file__"), '..', '..'))
 from AI_scientist.util import sort_two_lists
+from AI_scientist.pytorch.util_pytorch import to_np_array
 from AI_scientist.settings.global_param import SCALE_FACTOR
 
 
@@ -424,7 +425,7 @@ def get_numpy_tasks(tasks):
     tasks_save = []
     for task_key, task in tasks.items():
         ((X_train, y_train), (X_test, y_test)), z_info = task
-        tasks_save.append([[[X_train.data.numpy(), y_train.data.numpy()], [X_test.data.numpy(), y_test.data.numpy()]], z_info])
+        tasks_save.append([[[to_np_array(X_train), to_np_array(y_train)], [to_np_array(X_test), to_np_array(y_test)]], z_info])
     return tasks_save
 
 
