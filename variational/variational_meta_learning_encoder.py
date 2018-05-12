@@ -341,7 +341,7 @@ is_regulated_net = False
 is_load_data = False
 is_autoencoder = True
 forward_steps = [1]
-max_forward_steps = 1
+max_forward_steps = 10
 VAE_beta = 0.2
 exp_mode = "meta"
 

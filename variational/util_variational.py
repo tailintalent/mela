@@ -107,11 +107,17 @@ def get_task(
     X = X[valid]
     y = y[valid]
     reflect = reflect[valid]
+    if obs_array is not None:
+        obs_X = obs_X[valid]
+        obs_y = obs_y[valid]
 
     # Emphasizing trajectories with bouncing:
     if bounce_focus:
         X = X[reflect.astype(bool)]
         y = y[reflect.astype(bool)]
+        if obs_array is not None:
+            obs_X = obs_X[reflect.astype(bool)]
+            obs_y = obs_y[reflect.astype(bool)]
         reflect = reflect[reflect.astype(bool)]
     
     if translation is not None:
@@ -129,16 +135,9 @@ def get_task(
     X = X[chosen_idx]
     y = y[chosen_idx]
     reflect = reflect[chosen_idx]
-
     if obs_array is not None:
-        obs_X = obs_X[valid]
-        obs_y = obs_y[valid]
-        if bounce_focus:
-            obs_X = obs_X[reflect.astype(bool)]
-            obs_y = obs_y[reflect.astype(bool)]
         obs_X = obs_X[chosen_idx]
         obs_y = obs_y[chosen_idx]
-
         max_value = max(obs_X.max(), obs_y.max())
         obs_X = obs_X / max_value
         obs_y = obs_y / max_value
