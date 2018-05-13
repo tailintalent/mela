@@ -74,6 +74,7 @@ is_uncertainty_net = False
 is_regulated_net = False
 is_load_data = False
 VAE_beta = 0.2
+
 task_id_list = get_args(task_id_list, 3, type = "tuple")
 if task_id_list[0] in ["C-sin", "C-tanh"]:
     statistics_output_neurons = 2 if task_id_list[0] == "C-sin" else 4
@@ -82,6 +83,8 @@ if task_id_list[0] in ["C-sin", "C-tanh"]:
     input_size = 1
     output_size = 1
     reg_amp = 1e-6
+    forward_steps = [1]
+    is_time_series = False
 elif task_id_list[0] == "bounce-states":
     statistics_output_neurons = 8
     num_shots = 100
@@ -89,6 +92,8 @@ elif task_id_list[0] == "bounce-states":
     input_size = 6
     output_size = 2
     reg_amp = 1e-8
+    forward_steps = [1, 2]
+    is_time_series = True
 elif task_id_list[0] == "bounce-images":
     raise
 
@@ -134,12 +139,12 @@ array_id = get_args(array_id, 21)
 # Settings:
 task_settings = {
     "xlim": (-5, 5),
-    "num_examples": 20,
+    "num_examples": num_shots * 2,
     "test_size": 0.5,
 }
 isParallel = False
 inspect_interval = 20
-save_interval = 100
+save_interval = 200
 num_backwards = 1
 is_oracle = (exp_mode == "oracle")
 if is_oracle:
@@ -150,8 +155,8 @@ print("exp_mode: {0}".format(exp_mode))
 assert len(task_id_list) == 1
 dataset_filename = dataset_PATH + task_id_list[0] + "_{0}-shot.p".format(num_shots)
 tasks = pickle.load(open(dataset_filename, "rb"))
-tasks_train = get_torch_tasks(tasks["tasks_train"], task_id_list[0], num_forward_steps = 1, is_oracle = is_oracle, is_cuda = is_cuda)
-tasks_test = get_torch_tasks(tasks["tasks_test"], task_id_list[0], start_id = num_train_tasks, num_tasks = num_test_tasks, num_forward_steps = 1, is_oracle = is_oracle, is_cuda = is_cuda)
+tasks_train = get_torch_tasks(tasks["tasks_train"], task_id_list[0], num_forward_steps = forward_steps[-1], is_oracle = is_oracle, is_cuda = is_cuda)
+tasks_test = get_torch_tasks(tasks["tasks_test"], task_id_list[0], start_id = num_train_tasks, num_tasks = num_test_tasks, num_forward_steps = forward_steps[-1], is_oracle = is_oracle, is_cuda = is_cuda)
 
 # Obtain nets:
 all_keys = list(tasks_train.keys()) + list(tasks_test.keys())
@@ -162,19 +167,20 @@ if exp_mode in ["meta"]:
     struct_param_pre.append([pre_pooling_neurons, "Simple_Layer", {"activation": "linear"}])
     struct_param_post = None
     struct_param_gen_base = [[struct_param_gen_base_neurons[0], "Simple_Layer", {}] for _ in range(struct_param_gen_base_neurons[1])]
-    statistics_Net, generative_Net, generative_Net_logstd = get_nets(input_size = input_size, output_size = output_size, main_hidden_neurons = main_hidden_neurons,
-                                              pre_pooling_neurons = pre_pooling_neurons, statistics_output_neurons = statistics_output_neurons, num_context_neurons = num_context_neurons,
-                                              struct_param_pre = struct_param_pre,
-                                              struct_param_gen_base = struct_param_gen_base,
-                                              activation_statistics = activation_gen,
-                                              activation_generative = activation_gen,
-                                              activation_model = activation_model,
-                                              statistics_pooling = statistics_pooling,
-                                              isParallel = isParallel,
-                                              is_VAE = is_VAE,
-                                              is_uncertainty_net = is_uncertainty_net,
-                                              is_cuda = is_cuda,
-                                             )
+    statistics_Net, generative_Net, generative_Net_logstd = get_nets(input_size = input_size, output_size = output_size, 
+                                                                      target_size = len(forward_steps) * output_size, main_hidden_neurons = main_hidden_neurons,
+                                                                      pre_pooling_neurons = pre_pooling_neurons, statistics_output_neurons = statistics_output_neurons, num_context_neurons = num_context_neurons,
+                                                                      struct_param_pre = struct_param_pre,
+                                                                      struct_param_gen_base = struct_param_gen_base,
+                                                                      activation_statistics = activation_gen,
+                                                                      activation_generative = activation_gen,
+                                                                      activation_model = activation_model,
+                                                                      statistics_pooling = statistics_pooling,
+                                                                      isParallel = isParallel,
+                                                                      is_VAE = is_VAE,
+                                                                      is_uncertainty_net = is_uncertainty_net,
+                                                                      is_cuda = is_cuda,
+                                                                     )
     if is_regulated_net:
         struct_param_regulated_Net = [[num_neurons, "Simple_Layer", {}] for num_neurons in main_hidden_neurons]
         struct_param_regulated_Net.append([1, "Simple_Layer", {"activation": "linear"}])
@@ -254,8 +260,8 @@ for i in range(num_iter + 1):
             for k in range(num_backwards):
                 optimizer.zero_grad()
                 if master_model is not None:
-                    results = master_model.get_predictions(X_test = X_test, X_train = X_train, y_train = y_train, 
-                                                          is_VAE = is_VAE, is_uncertainty_net = is_uncertainty_net, is_regulated_net = is_regulated_net)
+                    results = master_model.get_predictions(X_test = X_test, X_train = X_train, y_train = y_train, is_time_series = is_time_series, 
+                                                          is_VAE = is_VAE, is_uncertainty_net = is_uncertainty_net, is_regulated_net = is_regulated_net, forward_steps = forward_steps)
                 else:
                     results = {}
                     results["y_pred"] = model(X_test)
@@ -288,8 +294,8 @@ for i in range(num_iter + 1):
                 continue
             ((X_train, y_train), (X_test, y_test)), _ = task
             if master_model is not None:
-                results = master_model.get_predictions(X_test = X_test, X_train = X_train, y_train = y_train, 
-                                                      is_VAE = is_VAE, is_uncertainty_net = is_uncertainty_net, is_regulated_net = is_regulated_net)
+                results = master_model.get_predictions(X_test = X_test, X_train = X_train, y_train = y_train, is_time_series = is_time_series, 
+                                                      is_VAE = is_VAE, is_uncertainty_net = is_uncertainty_net, is_regulated_net = is_regulated_net, forward_steps = forward_steps)
             else:
                 results = {}
                 results["y_pred"] = model(X_test)
@@ -311,7 +317,7 @@ for i in range(num_iter + 1):
 
     loss_test_record = []
     for task_key, task in tasks_train.items():
-        loss_test, _, _, _ = evaluate(task, master_model = master_model, model = model, criterion = criterion, is_VAE = is_VAE, is_regulated_net = is_regulated_net)
+        loss_test, _, _, _ = evaluate(task, master_model = master_model, model = model, criterion = criterion, is_time_series = is_time_series, is_VAE = is_VAE, is_regulated_net = is_regulated_net, forward_steps = forward_steps)
         loss_test_record.append(loss_test)
     to_stop = early_stopping.monitor(np.mean(loss_test_record))
 
@@ -321,7 +327,7 @@ for i in range(num_iter + 1):
         print("=" * 50)
         print("training tasks:")
         for task_key, task in tasks_train.items():
-            loss_test, loss_test_sampled, mse, KLD_test = evaluate(task, master_model = master_model, model = model, criterion = criterion, is_VAE = is_VAE, is_regulated_net = is_regulated_net)
+            loss_test, loss_test_sampled, mse, KLD_test = evaluate(task, master_model = master_model, model = model, criterion = criterion, is_time_series = is_time_series, is_VAE = is_VAE, is_regulated_net = is_regulated_net, forward_steps = forward_steps)
             reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, is_cuda = is_cuda).data[0]
             data_record["loss"][task_key].append(loss_test)
             data_record["loss_sampled"][task_key].append(loss_test_sampled)
@@ -330,7 +336,7 @@ for i in range(num_iter + 1):
             data_record["KLD"][task_key].append(KLD_test)
             print('{0}\ttrain\t{1}  \tloss: {2:.9f}\tloss_sampled:{3:.9f} \tmse:{4:.9f}\tKLD:{5:.9f}\treg:{6:.9f}'.format(i, task_key, loss_test, loss_test_sampled, mse, KLD_test, reg))
         for task_key, task in tasks_test.items():
-            loss_test, loss_test_sampled, mse, KLD_test = evaluate(task, master_model = master_model, model = model, criterion = criterion, is_VAE = is_VAE, is_regulated_net = is_regulated_net)
+            loss_test, loss_test_sampled, mse, KLD_test = evaluate(task, master_model = master_model, model = model, criterion = criterion, is_time_series = is_time_series, is_VAE = is_VAE, is_regulated_net = is_regulated_net, forward_steps = forward_steps)
             reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, is_cuda = is_cuda).data[0]
             data_record["loss"][task_key].append(loss_test)
             data_record["loss_sampled"][task_key].append(loss_test_sampled)
@@ -346,8 +352,8 @@ for i in range(num_iter + 1):
         mse_test_list = [data_record["mse"][task_key][-1] for task_key in tasks_test]
         reg_train_list = [data_record["reg"][task_key][-1] for task_key in tasks_train]
         reg_test_list = [data_record["reg"][task_key][-1] for task_key in tasks_test]
-        mse_few_shot = plot_few_shot_loss(master_model, tasks_test, isplot = isplot)
-        plot_quick_learn_performance(master_model if exp_mode in ["meta"] else model, tasks_test, isplot = isplot)
+        mse_few_shot = plot_few_shot_loss(master_model, tasks_test, forward_steps = forward_steps, is_time_series = is_time_series, isplot = isplot)
+        plot_quick_learn_performance(master_model if exp_mode in ["meta"] else model, tasks_test, forward_steps = forward_steps, is_time_series = is_time_series, isplot = isplot)
         record_data(data_record, 
                     [np.mean(loss_train_list), np.median(loss_train_list), np.mean(reg_train_list), i,
                      np.mean(loss_test_list), np.median(loss_test_list), np.mean(reg_test_list),
@@ -387,7 +393,7 @@ for i in range(num_iter + 1):
 
             # Plotting individual test data:
             if "bounce" in task_id_list[0]:
-                plot_individual_tasks_bounce(tasks_test, num_examples_show = 40, num_tasks_show = 6, master_model = master_model, model = model, num_shots = 200, valid_input_dims = input_size - z_size)
+                plot_individual_tasks_bounce(tasks_test, num_examples_show = 40, num_tasks_show = 6, master_model = master_model, model = model, num_shots = 200, valid_input_dims = input_size - z_size, target_forward_steps = len(forward_steps), eval_forward_steps = len(forward_steps))
             else:
                 print("train tasks:")
                 plot_individual_tasks(tasks_train, master_model = master_model, model = model, is_VAE = is_VAE, is_uncertainty_net = is_uncertainty_net, is_regulated_net = is_regulated_net, is_oracle = is_oracle, xlim = task_settings["xlim"])
@@ -440,6 +446,7 @@ for i in range(int(len(tasks_test) / 100)):
     tasks_test_iter = {task_key: tasks_test[task_key] for task_key in task_keys_iter}
     mse = plot_quick_learn_performance(master_model if master_model is not None else model, tasks_test_iter, lr = lr, epochs = 20, isplot = isplot)['model_0'].mean(0)
     mse_list_all.append(mse)
+mse_list_all = np.array(mse_list_all)
 info_dict["mse_test"] = mse_list_all
 pickle.dump(info_dict, open(filename + "info.p", "wb"))
 print("mean:")

@@ -83,7 +83,19 @@ class Master_Model(nn.Module):
         else:
             raise Exception("use_net {0} not recognized!".format(self.use_net))
 
-    def get_predictions(self, X_test, X_train, y_train, is_VAE = False, is_uncertainty_net = False, is_regulated_net = False):
+    
+    def get_predictions(
+        self,
+        X_test,
+        X_train,
+        y_train,
+        is_time_series = True,
+        is_VAE = False,
+        is_uncertainty_net = False,
+        is_regulated_net = False,
+        forward_steps = [1],
+        autoencoder = None,
+        ):
         results = {}
         if is_VAE:
             statistics_mu, statistics_logvar = self.statistics_Net.forward_inputs(X_train, y_train)
@@ -118,9 +130,10 @@ class Master_Model(nn.Module):
                 if is_regulated_net:
                     statistics = get_regulated_statistics(self.generative_Net, statistics)
                     results["statistics_feed"] = statistics
-                y_pred = self.generative_Net(X_test, statistics)
+                y_pred = get_forward_pred(self.generative_Net, X_test, forward_steps, is_time_series = is_time_series, latent_param = statistics, jump_step = 2, is_flatten = True)
                 results["y_pred"] = y_pred
         return results
+
 
     def get_regularization(self, source = ["weight", "bias"], target = ["statistics_Net", "generative_Net"], mode = "L1"):
         if target == "all":
@@ -160,7 +173,7 @@ class Master_Model(nn.Module):
         return mse_list
 
 
-def quick_learn(model, X, y, validation_data, loss_core = "huber", batch_size = 128, epochs = 40, lr = 1e-3, optim_type = "adam"):
+def quick_learn(model, X, y, validation_data, forward_steps = [1], is_time_series = True, loss_core = "huber", batch_size = 128, epochs = 40, lr = 1e-3, optim_type = "adam"):
     model_train = deepcopy(model)
     net_optimizer = get_optimizer(optim_type = optim_type, lr = lr, parameters = model_train.parameters())
     criterion = get_criterion(loss_core)
@@ -175,7 +188,7 @@ def quick_learn(model, X, y, validation_data, loss_core = "huber", batch_size = 
     dataset_train = data_utils.TensorDataset(X, y)
     train_loader = data_utils.DataLoader(dataset_train, batch_size = batch_size, shuffle = True)
 
-    y_pred_test = model_train(X_test)
+    y_pred_test = get_forward_pred(model_train, X_test, forward_steps = forward_steps, is_time_series = is_time_series, jump_step = 2, is_flatten = True)
     mse_test = get_criterion("mse")(y_pred_test, y_test)
     mse_list.append(mse_test.data[0])
     for i in range(epochs):
@@ -185,18 +198,18 @@ def quick_learn(model, X, y, validation_data, loss_core = "huber", batch_size = 
             if optim_type == "LBFGS":
                 def closure():
                     net_optimizer.zero_grad()
-                    y_pred = model_train(X_batch)
+                    y_pred = get_forward_pred(model_train, X_batch, forward_steps = forward_steps, is_time_series = is_time_series, jump_step = 2, is_flatten = True)
                     loss = criterion(y_pred, y_batch)
                     loss.backward()
                     return loss
                 net_optimizer.step(closure)
             else:
                 net_optimizer.zero_grad()
-                y_pred = model_train(X_batch)
+                y_pred = get_forward_pred(model_train, X_batch, forward_steps = forward_steps, is_time_series = is_time_series, jump_step = 2, is_flatten = True)
                 loss = criterion(y_pred, y_batch)
                 loss.backward()
                 net_optimizer.step()
-        y_pred_test = model_train(X_test)
+        y_pred_test = get_forward_pred(model_train, X_test, forward_steps = forward_steps, is_time_series = is_time_series, jump_step = 2, is_flatten = True)
         mse_test = get_criterion("mse")(y_pred_test, y_test)
         mse_list.append(mse_test.data[0])
     mse_list = np.array(mse_list)
@@ -562,28 +575,39 @@ def forward(model, X):
     return output_seq
 
 
-def get_forward_pred(predictor, latent, forward_steps):
+def get_forward_pred(predictor, latent, forward_steps, latent_param = None, is_time_series = True, jump_step = 2, is_flatten = False):
     """Applying the same model to roll out several time steps"""
-    max_forward_steps = max(forward_steps)
-
-    current_latent = latent
-    pred_list = []
-    for i in range(1, max_forward_steps + 1):
-        current_pred = predictor(current_latent)
-        pred_list.append(current_pred)
-        current_latent = torch.cat([current_latent[:,1:], current_pred], 1)
-    pred_list = torch.cat(pred_list, 1)
-    pred_list = pred_list.view(pred_list.size(0), -1, 2)
-    forward_steps_idx = torch.LongTensor(np.array(forward_steps) - 1)
-    if predictor.is_cuda:
-        forward_steps_idx = forward_steps_idx.cuda()
-    return pred_list[:, forward_steps_idx]
+    if not is_time_series:
+        if latent_param is None:
+            pred_list = predictor(latent)
+        else:
+            pred_list = predictor(latent, latent_param)      
+    else:
+        max_forward_steps = max(forward_steps)
+        current_latent = latent
+        pred_list = []
+        for i in range(1, max_forward_steps + 1):
+            if latent_param is None:
+                current_pred = predictor(current_latent)
+            else:
+                current_pred = predictor(current_latent, latent_param)
+            pred_list.append(current_pred)
+            current_latent = torch.cat([current_latent[:,jump_step:], current_pred], 1)
+        pred_list = torch.cat(pred_list, 1)
+        pred_list = pred_list.view(pred_list.size(0), -1, 2)
+        forward_steps_idx = torch.LongTensor(np.array(forward_steps) - 1)
+        if predictor.is_cuda:
+            forward_steps_idx = forward_steps_idx.cuda()
+        pred_list = pred_list[:, forward_steps_idx]
+        if is_flatten:
+            pred_list = pred_list.view(pred_list.size(0), -1)
+    return pred_list
 
 
 def get_autoencoder_losses(conv_encoder, predictor, X_motion, y_motion, forward_steps):
     """Getting autoencoder loss"""
     latent = forward(conv_encoder.encode, X_motion).view(X_motion.size(0), -1, 2)
-    latent_pred = get_forward_pred(predictor, latent, forward_steps = forward_steps)
+    latent_pred = get_forward_pred(predictor, latent, forward_steps = forward_steps, is_time_series = True)
     
     pred_recons = forward(conv_encoder.decode, latent_pred)
     recons = forward(conv_encoder.decode, latent)
@@ -684,6 +708,7 @@ def clone_net(generative_Net, layer_type = "Simple_Layer", clone_parameters = Tr
 def get_nets(
     input_size,
     output_size,
+    target_size = None,
     main_hidden_neurons = [20, 20],
     pre_pooling_neurons = 60,
     statistics_output_neurons = 10,
@@ -717,7 +742,9 @@ def get_nets(
     if is_VAE or is_uncertainty_net:
         if struct_param_post_logvar is None:
             struct_param_post_logvar = struct_param_post
-    statistics_Net = Statistics_Net(input_size = input_size + output_size,
+    if target_size is None:
+        target_size = output_size
+    statistics_Net = Statistics_Net(input_size = input_size + target_size,
                                     pre_pooling_neurons = pre_pooling_neurons,
                                     struct_param_pre = struct_param_pre,
                                     struct_param_post = struct_param_post,
@@ -821,7 +848,7 @@ def get_tasks(task_id_list, num_train, num_test, task_settings = {}, is_cuda = F
     return tasks_train, tasks_test
 
 
-def evaluate(task, master_model = None, model = None, criterion = None, is_VAE = False, is_regulated_net = False, autoencoder = None, **kwargs):
+def evaluate(task, master_model = None, model = None, criterion = None, is_time_series = True, is_VAE = False, is_regulated_net = False, autoencoder = None, forward_steps = [1], **kwargs):
     if autoencoder is not None:
         forward_steps = kwargs["forward_steps"]
         forward_steps_idx = torch.LongTensor(np.array(forward_steps) - 1)    
@@ -855,13 +882,13 @@ def evaluate(task, master_model = None, model = None, criterion = None, is_VAE =
                     statistics = get_regulated_statistics(master_model.generative_Net, statistics)
                 if autoencoder is not None:
                     master_model.generative_Net.set_latent_param(statistics)
-                    y_pred = get_forward_pred(master_model.generative_Net, X_train, forward_steps)
+                    y_pred = get_forward_pred(master_model.generative_Net, X_train, forward_steps, is_time_series = is_time_series)
                     loss = criterion(X_train, y_pred, X_train_obs, y_train_obs, autoencoder)
                     mse = criterion(X_train, y_pred, X_train_obs, y_train_obs, autoencoder, loss_fun = loss_fun, verbose = True)
                 else:
-                    y_pred = master_model.generative_Net(X_test, statistics)
+                    y_pred = get_forward_pred(master_model.generative_Net, X_test, forward_steps, is_time_series = is_time_series, latent_param = statistics, jump_step = 2, is_flatten = True)
                     loss = criterion(y_pred, y_test)
-                    mse = loss_fun(y_pred, y_test)
+                    mse = loss_fun(y_pred, y_test)  
             else:
                 statistics_mu, statistics_logvar = master_model.statistics_Net(torch.cat([X_train, y_train], 1))
                 if is_regulated_net:
@@ -874,7 +901,7 @@ def evaluate(task, master_model = None, model = None, criterion = None, is_VAE =
             return loss.data[0], loss.data[0], mse.data[0], 0
     else:
         if autoencoder is not None:
-            y_pred = get_forward_pred(model, X_train, forward_steps)
+            y_pred = get_forward_pred(model, X_train, forward_steps, is_time_series = True)
             loss = loss_test_sampled = criterion(X_train, y_pred, X_train_obs, y_train_obs, autoencoder)
             mse = criterion(X_train, y_pred, X_train_obs, y_train_obs, autoencoder, loss_fun = loss_fun, verbose = True)
         else:
@@ -1146,7 +1173,7 @@ def plot_individual_tasks_bounce(
     plt.close()
 
 
-def plot_few_shot_loss(master_model, tasks, isplot = True, autoencoder = None, min_shots = None, **kwargs):
+def plot_few_shot_loss(master_model, tasks, isplot = True, is_time_series = True, autoencoder = None, min_shots = None, forward_steps = [1], **kwargs):
     if master_model is None:
         return []
     num_shots_list = [10, 20, 30, 40, 50, 70, 100, 200, 300, 500, 1000]
@@ -1182,10 +1209,10 @@ def plot_few_shot_loss(master_model, tasks, isplot = True, autoencoder = None, m
                 statistics = statistics[0]
             if autoencoder is not None:
                 master_model.generative_Net.set_latent_param(statistics)
-                y_pred = get_forward_pred(master_model.generative_Net, X_test, forward_steps)
+                y_pred = get_forward_pred(master_model.generative_Net, X_test, forward_steps, is_time_series = is_time_series)
                 mse = kwargs["criterion"](X_test, y_pred, X_test_obs, y_test_obs, autoencoder, loss_fun = nn.MSELoss()).data[0]
             else:
-                y_test_pred = master_model.generative_Net(X_test, statistics)
+                y_test_pred = get_forward_pred(master_model.generative_Net, X_test, forward_steps, is_time_series = is_time_series, latent_param = statistics, jump_step = 2, is_flatten = True)
                 mse = nn.MSELoss()(y_test_pred, y_test).data[0]
             mse_list.append(mse)
         mse_list_whole.append(mse_list)
@@ -1215,7 +1242,7 @@ def plot_few_shot_loss(master_model, tasks, isplot = True, autoencoder = None, m
     return mse_list_whole
 
 
-def plot_quick_learn_performance(models, tasks, learning_type = "clone_net", loss_core = "huber", epochs = 50, lr = 1e-3, batch_size = 128, optim_type = "adam", isplot = True, scale = "normal"):
+def plot_quick_learn_performance(models, tasks, learning_type = "clone_net", is_time_series = True, forward_steps = [1], loss_core = "huber", epochs = 50, lr = 1e-3, batch_size = 128, optim_type = "adam", isplot = True, scale = "normal"):
     if not isinstance(models, dict):
         models = {"model_0": models}
     mse_dict_whole = {model_key: [] for model_key in models.keys()}
@@ -1227,10 +1254,10 @@ def plot_quick_learn_performance(models, tasks, learning_type = "clone_net", los
                     model_core = model.get_clone_net(X_train, y_train)
                 else:
                     model_core = model
-                mse_list = quick_learn(model_core, X_train, y_train, validation_data = (X_test, y_test), loss_core = loss_core, 
+                mse_list = quick_learn(model_core, X_train, y_train, validation_data = (X_test, y_test), forward_steps = forward_steps, is_time_series = is_time_series, loss_core = loss_core, 
                                        batch_size = batch_size, epochs = epochs, lr = lr, optim_type = optim_type)[0]
             elif learning_type == "latent_param":
-                mse_list = model.latent_param_quick_learn(X_train, y_train, validation_data = (X_test, y_test), loss_core = loss_core, 
+                mse_list = model.latent_param_quick_learn(X_train, y_train, validation_data = (X_test, y_test), is_time_series = is_time_series, loss_core = loss_core, 
                                                           epochs = epochs, batch_size = batch_size, lr = lr, optim_type = optim_type, reset_latent_param = True)
             else:
                 raise
