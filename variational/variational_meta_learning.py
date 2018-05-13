@@ -850,7 +850,6 @@ def get_tasks(task_id_list, num_train, num_test, task_settings = {}, is_cuda = F
 
 def evaluate(task, master_model = None, model = None, criterion = None, is_time_series = True, is_VAE = False, is_regulated_net = False, autoencoder = None, forward_steps = [1], **kwargs):
     if autoencoder is not None:
-        forward_steps = kwargs["forward_steps"]
         forward_steps_idx = torch.LongTensor(np.array(forward_steps) - 1)    
         ((X_train_obs, y_train_obs), (X_test_obs, y_test_obs)), _ = task
         if X_train_obs.is_cuda:
@@ -1181,7 +1180,6 @@ def plot_few_shot_loss(master_model, tasks, isplot = True, is_time_series = True
     for task_key, task in tasks.items():
         mse_list = []
         if autoencoder is not None:
-            forward_steps = kwargs["forward_steps"]
             forward_steps_idx = torch.LongTensor(np.array(forward_steps) - 1)
             if autoencoder.is_cuda:
                 forward_steps_idx = forward_steps_idx.cuda()

@@ -36,18 +36,25 @@ np.random.seed(seed)
 torch.manual_seed(seed)
 is_cuda = torch.cuda.is_available()
 print("is_cuda: {0}".format(is_cuda))
+try:
+    get_ipython().run_line_magic('matplotlib', 'inline')
+    isplot = True
+except:
+    isplot = False
 
 
 # In[2]:
 
 
-def combine_dataset(tasks):
+def combine_dataset(tasks, num = None):
     X_train_list = []
     y_train_list = []
     X_test_list = []
     y_test_list = []
     num_examples_select = 100
-    for task in tasks.values():
+    for i, task in enumerate(tasks.values()):
+        if num is not None and i > num:
+            break
         ((X_train, y_train), (X_test, y_test)), info = task
         X_train_list.append(X_train[:num_examples_select])
         y_train_list.append(y_train[:num_examples_select])
@@ -329,104 +336,111 @@ task_id_list = [
 # "M-Gaussian",
 # "M-tanh",
 # "M-softplus",
+# "C-sin",
+# "C-tanh",
 # "bounce-states",
 "bounce-images",
 ]
-exp_id = "encode"
-input_size = 6
-statistics_output_neurons = 8
+
+exp_id = "C-May13"
+exp_mode = "meta"
+# exp_mode = "finetune"
+# exp_mode = "oracle"
 is_VAE = False
 is_uncertainty_net = False
 is_regulated_net = False
 is_load_data = False
-is_autoencoder = True
-forward_steps = [1]
-max_forward_steps = 10
 VAE_beta = 0.2
-exp_mode = "meta"
+task_id_list = get_args(task_id_list, 3, type = "tuple")
+if task_id_list[0] in ["C-sin", "C-tanh"]:
+    statistics_output_neurons = 2 if task_id_list[0] == "C-sin" else 4
+    z_size = 2 if task_id_list[0] == "C-sin" else 4
+    num_shots = 10
+    input_size = 1
+    output_size = 1
+    reg_amp = 1e-6
+    forward_steps = [1]
+    is_time_series = False
+elif task_id_list[0] == "bounce-states":
+    statistics_output_neurons = 8
+    num_shots = 100
+    z_size = 8
+    input_size = 6
+    output_size = 2
+    reg_amp = 1e-8
+    forward_steps = [1]
+    is_time_series = True
+elif task_id_list[0] == "bounce-images":
+    statistics_output_neurons = 8
+    num_shots = 100
+    z_size = 8
+    input_size = 6
+    output_size = 2
+    reg_amp = 1e-7
+    forward_steps = [1]
+    is_time_series = True
+else:
+    raise
 
-output_size = 2
+is_autoencoder = True
+max_forward_steps = 10
+
 lr = 5e-5
-num_train_tasks = 2
-num_test_tasks = 2
-batch_size_task = min(100, num_train_tasks)
-num_backwards = 1
-num_iter = 3000
+num_train_tasks = 100
+num_test_tasks = 100
+batch_size_task = num_train_tasks
+num_iter = 10000
 pre_pooling_neurons = 200
 num_context_neurons = 0
 statistics_pooling = "max"
+struct_param_pre_neurons = (60,3)
+struct_param_gen_base_neurons = (60,3)
 main_hidden_neurons = (40, 40)
-patience = 200
-reg_amp = 1e-6
 activation_gen = "leakyRelu"
 activation_model = "leakyRelu"
 optim_mode = "indi"
-loss_core = "mse"
-array_id = "0"
+loss_core = "huber"
+patience = 300
+array_id = 0
 
 exp_id = get_args(exp_id, 1)
 exp_mode = get_args(exp_mode, 2)
-task_id_list = get_args(task_id_list, 3, type = "tuple")
 statistics_output_neurons = get_args(statistics_output_neurons, 4, type = "int")
 is_VAE = get_args(is_VAE, 5, type = "bool")
 VAE_beta = get_args(VAE_beta, 6, type = "float")
 lr = get_args(lr, 7, type = "float")
-batch_size_task = get_args(batch_size_task, 8, type = "int")
-pre_pooling_neurons = get_args(pre_pooling_neurons, 9, type = "int")
-num_context_neurons = get_args(num_context_neurons, 10, type = "int")
-statistics_pooling = get_args(statistics_pooling, 11)
-main_hidden_neurons = get_args(main_hidden_neurons, 12, "tuple")
-reg_amp = get_args(reg_amp, 13, type = "float")
-activation_gen = get_args(activation_gen, 14)
-activation_model = get_args(activation_model, 15)
-optim_mode = get_args(optim_mode, 16)
-is_uncertainty_net = get_args(is_uncertainty_net, 17, "bool")
-loss_core = get_args(loss_core, 18)
-array_id = get_args(array_id, 19)
-
-try:
-    get_ipython().run_line_magic('matplotlib', 'inline')
-    isplot = True
-except:
-    isplot = False
+pre_pooling_neurons = get_args(pre_pooling_neurons, 8, type = "int")
+num_context_neurons = get_args(num_context_neurons, 9, type = "int")
+statistics_pooling = get_args(statistics_pooling, 10)
+struct_param_pre_neurons = get_args(struct_param_pre_neurons, 11, "tuple")
+struct_param_gen_base_neurons = get_args(struct_param_gen_base_neurons, 12, "tuple")
+main_hidden_neurons = get_args(main_hidden_neurons, 13, "tuple")
+reg_amp = get_args(reg_amp, 14, type = "float")
+activation_gen = get_args(activation_gen, 15)
+activation_model = get_args(activation_model, 16)
+optim_mode = get_args(optim_mode, 17)
+is_uncertainty_net = get_args(is_uncertainty_net, 18, "bool")
+loss_core = get_args(loss_core, 19)
+patience = get_args(patience, 20, "int")
+array_id = get_args(array_id, 21)
 
 # Settings:
-reg_dict = {"statistics_Net": {"weight": reg_amp, "bias": reg_amp},
-            "generative_Net": {"weight": reg_amp, "bias": reg_amp, "W_gen": reg_amp, "b_gen": reg_amp},
-            "autoencoder": {"weight": 1e-7, "bias": 1e-7},
-           }
-reg_multiplier = np.linspace(0, 1, num_iter + 1) ** 2
 task_settings = {
-    "zdim": 1,
-    "z_settings": ["Gaussian", (0, 1)],
-    "num_layers": 1,
-    "xlim": (-4, 4),
-    "activation": "softplus",
-    "input_size": input_size,
-    "num_examples": 2000,
+    "xlim": (-5, 5),
+    "num_examples": num_shots * 2,
+    "test_size": 0.5,
 }
-struct_param_pre = [
-        [60, "Simple_Layer", {}],
-        [60, "Simple_Layer", {}],
-        [60, "Simple_Layer", {}],
-        [pre_pooling_neurons, "Simple_Layer", {"activation": "linear"}],
-    ]
-struct_param_post = None
-struct_param_gen_base = [
-        [60, "Simple_Layer", {}],
-        [60, "Simple_Layer", {}],
-        [60, "Simple_Layer", {}],
-]
 isParallel = False
 inspect_interval = 5
 save_interval = 100
-filename = variational_model_PATH + "/trained_models/{0}/Net_{1}_{2}_input_{3}_({4},{5})_stat_{6}_pre_{7}_pool_{8}_context_{9}_hid_{10}_batch_{11}_back_{12}_VAE_{13}_{14}_uncer_{15}_lr_{16}_reg_{17}_actgen_{18}_actmodel_{19}_struct_{20}_{21}_core_{22}_{23}_".format(
-    exp_id, exp_mode, task_id_list, input_size, num_train_tasks, num_test_tasks, statistics_output_neurons, pre_pooling_neurons, statistics_pooling, num_context_neurons, main_hidden_neurons, batch_size_task, num_backwards, is_VAE, VAE_beta, is_uncertainty_net, lr, reg_amp, activation_gen, activation_model, get_struct_str(struct_param_gen_base), optim_mode, loss_core, exp_id)
-make_dir(filename)
-print(filename)
+num_backwards = 1
+is_oracle = (exp_mode == "oracle")
+if is_oracle:
+    input_size += z_size
+print("exp_mode: {0}".format(exp_mode))
 
+# Obtain tasks:
 if "tasks_train" not in locals():
-    # Obtain tasks:
     if is_load_data:
         try:
             dataset = pickle.load(open(filename + "data.p", "rb"))
@@ -444,33 +458,8 @@ if "tasks_train" not in locals():
     #     pickle.dump(dataset, open(filename + "data.p", "wb"))
         print("dataset saved.")
 
-
-# In[5]:
-
-
-model = None
-
-
-# ## Prepare nets:
-
-# In[6]:
-
-
-# Obtain nets:
+# Obtain autoencoder:
 aux_coeff = 0.3
-statistics_Net, generative_Net, generative_Net_logstd = get_nets(input_size = input_size, output_size = output_size, main_hidden_neurons = main_hidden_neurons,
-                                          pre_pooling_neurons = pre_pooling_neurons, statistics_output_neurons = statistics_output_neurons, num_context_neurons = num_context_neurons,
-                                          struct_param_pre = struct_param_pre,
-                                          struct_param_gen_base = struct_param_gen_base,
-                                          activation_statistics = activation_gen,
-                                          activation_generative = activation_gen,
-                                          activation_model = activation_model,
-                                          statistics_pooling = statistics_pooling,
-                                          isParallel = isParallel,
-                                          is_VAE = is_VAE,
-                                          is_uncertainty_net = is_uncertainty_net,
-                                          is_cuda = is_cuda,
-                                         )
 if is_autoencoder:
     encoder_struct_param = [
         [32, "Conv2d", {"kernel_size": 3, "stride": 2}],
@@ -494,27 +483,76 @@ if is_autoencoder:
     )
 else:
     autoencoder = None
+        
+        
+# Obtain nets:
+all_keys = list(tasks_train.keys()) + list(tasks_test.keys())
+data_record = {"loss": {key: [] for key in all_keys}, "loss_sampled": {key: [] for key in all_keys}, "mse": {key: [] for key in all_keys},
+               "reg": {key: [] for key in all_keys}, "KLD": {key: [] for key in all_keys}}
+reg_multiplier = np.linspace(0, 1, num_iter + 1) ** 2
+if exp_mode in ["meta"]:
+    struct_param_pre = [[struct_param_pre_neurons[0], "Simple_Layer", {}] for _ in range(struct_param_pre_neurons[1])]
+    struct_param_pre.append([pre_pooling_neurons, "Simple_Layer", {"activation": "linear"}])
+    struct_param_post = None
+    struct_param_gen_base = [[struct_param_gen_base_neurons[0], "Simple_Layer", {}] for _ in range(struct_param_gen_base_neurons[1])]
+    statistics_Net, generative_Net, generative_Net_logstd = get_nets(input_size = input_size, output_size = output_size, 
+                                                                      target_size = len(forward_steps) * output_size, main_hidden_neurons = main_hidden_neurons,
+                                                                      pre_pooling_neurons = pre_pooling_neurons, statistics_output_neurons = statistics_output_neurons, num_context_neurons = num_context_neurons,
+                                                                      struct_param_pre = struct_param_pre,
+                                                                      struct_param_gen_base = struct_param_gen_base,
+                                                                      activation_statistics = activation_gen,
+                                                                      activation_generative = activation_gen,
+                                                                      activation_model = activation_model,
+                                                                      statistics_pooling = statistics_pooling,
+                                                                      isParallel = isParallel,
+                                                                      is_VAE = is_VAE,
+                                                                      is_uncertainty_net = is_uncertainty_net,
+                                                                      is_cuda = is_cuda,
+                                             )
+    if is_regulated_net:
+        struct_param_regulated_Net = [[num_neurons, "Simple_Layer", {}] for num_neurons in main_hidden_neurons]
+        struct_param_regulated_Net.append([1, "Simple_Layer", {"activation": "linear"}])
+        generative_Net = Net(input_size = input_size, struct_param = struct_param_regulated_Net, settings = {"activation": activation_model})
+    master_model = Master_Model(statistics_Net, generative_Net, generative_Net_logstd, is_cuda = is_cuda)
+    
+    all_parameter_list = [statistics_Net.parameters(), generative_Net.parameters()]
+    if is_uncertainty_net:
+        all_parameter_list.append(generative_Net_logstd.parameters())
+    if is_autoencoder:
+        all_parameter_list.append(autoencoder.parameters())
+    optimizer = optim.Adam(chain.from_iterable(all_parameter_list), lr = lr)
+    reg_dict = {"statistics_Net": {"weight": reg_amp, "bias": reg_amp},
+                "generative_Net": {"weight": reg_amp, "bias": reg_amp, "W_gen": reg_amp, "b_gen": reg_amp},
+                "autoencoder": {"weight": 1e-7, "bias": 1e-7},
+               }
+    record_data(data_record, [struct_param_gen_base, struct_param_pre, struct_param_post], ["struct_param_gen_base", "struct_param_pre", "struct_param_post"])
+    model = None
+
+elif exp_mode in ["finetune", "oracle"]:
+    struct_param_net = [[num_neurons, "Simple_Layer", {}] for num_neurons in main_hidden_neurons]
+    struct_param_net.append([output_size, "Simple_Layer", {"activation": "linear"}])
+    record_data(data_record, [struct_param_net], ["struct_param_net"])
+    model = Net(input_size = input_size,
+                  struct_param = struct_param_net,
+                  settings = {"activation": activation_model},
+                  is_cuda = is_cuda,
+                 )
+    reg_dict = {"net": {"weight": reg_amp, "bias": reg_amp},
+                "autoencoder": {"weight": 1e-7, "bias": 1e-7},
+               }
+    all_parameter_list = [model.parameters()]
+    if is_autoencoder:
+        all_parameter_list.append(autoencoder.parameters())
+    optimizer = optim.Adam(chain.from_iterable(all_parameter_list), lr = lr)
+    statistics_Net = None
+    generative_Net = None
+    generative_Net_logstd = None
+    master_model = None
+
+# Setting up optimizer and loss functions:
 forward_steps_idx = torch.LongTensor(np.array(forward_steps) - 1)
 if is_cuda:
     forward_steps_idx = forward_steps_idx.cuda()
-
-if is_regulated_net:
-    struct_param_regulated_Net = [
-            [40, "Simple_Layer", {}],
-            [40, "Simple_Layer", {}],
-            [1, "Simple_Layer", {"activation": "linear"}],
-    ]
-    generative_Net = Net(input_size = input_size, struct_param = struct_param_regulated_Net, settings = {"activation": activation_model})
-master_model = Master_Model(statistics_Net, generative_Net, generative_Net_logstd, is_cuda = is_cuda)
-
-# Setting up optimizer and loss functions:
-all_parameter_list = [statistics_Net.parameters(), generative_Net.parameters()]
-if is_uncertainty_net:
-    all_parameter_list.append(generative_Net_logstd.parameters())
-if is_autoencoder:
-    all_parameter_list.append(autoencoder.parameters())
-optimizer = optim.Adam(chain.from_iterable(all_parameter_list), lr = lr)
-
 if loss_core == "mse":
     loss_fun_core = nn.MSELoss(size_average = True)
 elif loss_core == "huber":
@@ -533,18 +571,24 @@ else:
             criterion = loss_fun_core
 early_stopping = Early_Stopping(patience = patience)
 
+filename = variational_model_PATH + "/trained_models/{0}/ENet_{1}_{2}_input_{3}_({4},{5})_stat_{6}_pre_{7}_pool_{8}_context_{9}_hid_{10}_{11}_{12}_VAE_{13}_{14}_uncer_{15}_lr_{16}_reg_{17}_actgen_{18}_actmodel_{19}_{20}_core_{21}_pat_{22}_{23}_".format(
+    exp_id, exp_mode, task_id_list, input_size, num_train_tasks, num_test_tasks, statistics_output_neurons, pre_pooling_neurons, statistics_pooling, num_context_neurons, main_hidden_neurons, struct_param_pre_neurons, struct_param_gen_base_neurons, is_VAE, VAE_beta, is_uncertainty_net, lr, reg_amp, activation_gen, activation_model, optim_mode, loss_core, patience, exp_id)
+make_dir(filename)
+print(filename)
 
 # Setting up recordings:
-all_keys = list(tasks_train.keys()) + list(tasks_test.keys())
-data_record = {"loss": {key: [] for key in all_keys}, "loss_sampled": {key: [] for key in all_keys}, "mse": {key: [] for key in all_keys},
-               "reg": {key: [] for key in all_keys}, "KLD": {key: [] for key in all_keys}}
 info_dict = {"array_id": array_id}
 info_dict["data_record"] = data_record
 info_dict["model_dict"] = []
 record_data(data_record, [exp_id, tasks_train, tasks_test, task_id_list, task_settings, reg_dict, is_uncertainty_net, lr, pre_pooling_neurons, num_backwards, batch_size_task, 
-                          struct_param_gen_base, struct_param_pre, struct_param_post, statistics_pooling, activation_gen, activation_model], 
+                          statistics_pooling, activation_gen, activation_model], 
             ["exp_id", "tasks_train", "tasks_test", "task_id_list", "task_settings", "reg_dict", "is_uncertainty_net", "lr", "pre_pooling_neurons", "num_backwards", "batch_size_task",
-             "struct_param_gen_base", "struct_param_pre", "struct_param_post", "statistics_pooling", "activation_gen", "activation_model"])
+             "statistics_pooling", "activation_gen", "activation_model"])
+
+filename = variational_model_PATH + "/trained_models/{0}/Net_{1}_{2}_input_{3}_({4},{5})_stat_{6}_pre_{7}_pool_{8}_context_{9}_hid_{10}_{11}_{12}_VAE_{13}_{14}_uncer_{15}_lr_{16}_reg_{17}_actgen_{18}_actmodel_{19}_{20}_core_{21}_pat_{22}_{23}_".format(
+    exp_id, exp_mode, task_id_list, input_size, num_train_tasks, num_test_tasks, statistics_output_neurons, pre_pooling_neurons, statistics_pooling, num_context_neurons, main_hidden_neurons, struct_param_pre_neurons, struct_param_gen_base_neurons, is_VAE, VAE_beta, is_uncertainty_net, lr, reg_amp, activation_gen, activation_model, optim_mode, loss_core, patience, exp_id)
+make_dir(filename)
+print(filename)
 
 
 # ## Pre-train the autoencoder for a few epochs:
@@ -558,13 +602,13 @@ lr_pre = 1e-3
 reg_amp_autoencoder = 1e-7
 reg_amp_latent = 1e-2
 
-(X_train_all, y_train_all), (X_test_all, y_test_all) = combine_dataset(tasks_train)
+(X_train_all, y_train_all), (X_test_all, y_test_all) = combine_dataset(tasks_train, num = 50)
 optimizer_pre = optim.Adam(autoencoder.parameters(), lr = lr_pre)
 train_loader = data_utils.DataLoader(X_train_all.data, batch_size = batch_size, shuffle = True)
 early_stopping_pre = Early_Stopping(patience = patience_pre)
 to_stop = False
 
-for epoch in range(21):
+for epoch in range(31):
     to_stop = train_epoch_pretrain(train_loader, X_test_all, autoencoder, optimizer_pre, isplot = isplot)
     if to_stop:
         print("Early stopping at iteration {0}".format(i))
@@ -619,7 +663,7 @@ for i in range(num_iter + 1):
                         if is_autoencoder:
                             generative_Net.set_latent_param(statistics)
                             y_pred = get_forward_pred(generative_Net, X_train, forward_steps)
-                            loss = criterion(X_train, y_pred, X_train_obs, y_train_obs, autoencoder, verbose = True)
+                            loss = criterion(X_train, y_pred, X_train_obs, y_train_obs, autoencoder, verbose = False)
                         else:
                             y_pred = generative_Net(X_train, statistics)
                             loss = criterion(y_pred, y_train)
@@ -760,7 +804,7 @@ for i in range(num_iter + 1):
             if "bounce" in task_id_list[0]:
                 if "bounce-images" in task_id_list[0]:
                     plot_tasks(tasks_test, autoencoder, forward_steps, num_tasks = min(3, num_test_tasks))
-                plot_individual_tasks_bounce(tasks_test, num_examples_show = 40, num_tasks_show = 6, master_model = master_model, model = model, autoencoder = autoencoder, num_shots = 200, eval_forward_steps = forward_steps[-1])
+                plot_individual_tasks_bounce(tasks_test, num_examples_show = 40, num_tasks_show = 6, master_model = master_model, model = model, autoencoder = autoencoder, num_shots = 200, target_forward_steps = len(forward_steps), eval_forward_steps = len(forward_steps))
             else:
                 print("train tasks:")
                 plot_individual_tasks(tasks_train, master_model = master_model, model = model, is_VAE = is_VAE, is_regulated_net = is_regulated_net, xlim = task_settings["xlim"])
