@@ -23,7 +23,7 @@ from AI_scientist.util import plot_matrices, make_dir, get_struct_str, get_args,
 from AI_scientist.settings.filepath import variational_model_PATH
 from AI_scientist.pytorch.modules import Simple_Layer
 from AI_scientist.pytorch.net import Net, ConvNet
-from AI_scientist.pytorch.util_pytorch import Loss_with_uncertainty, get_criterion
+from AI_scientist.pytorch.util_pytorch import Loss_with_uncertainty, get_criterion, to_np_array
 from AI_scientist.variational.variational_meta_learning import Master_Model, Statistics_Net, Generative_Net, load_model_dict, get_regulated_statistics
 from AI_scientist.variational.variational_meta_learning import VAE_Loss, sample_Gaussian, clone_net, get_nets, get_tasks, evaluate, get_reg, load_trained_models
 from AI_scientist.variational.variational_meta_learning import forward, get_forward_pred, get_rollout_pred_loss, get_autoencoder_losses, Loss_with_autoencoder
@@ -92,7 +92,7 @@ def plot_encoding(X, autoencoder, target = "encoding"):
         plt.show()
 
 
-def plot_tasks(tasks, autoencoder, forward_steps, num_tasks = 3):
+def plot_tasks(tasks, master_model = None, model = None, autoencoder = None, forward_steps = None, num_tasks = 3):
     task_keys = np.random.choice(list(tasks.keys()), num_tasks, replace = False)
     for i, task_key in enumerate(task_keys):
         task = tasks[task_key]
@@ -103,19 +103,15 @@ def plot_tasks(tasks, autoencoder, forward_steps, num_tasks = 3):
         y_test = forward(autoencoder.encode, y_test_obs[:, forward_steps_idx])
         
         # Plotting:
-        if X_train.is_cuda:
-            print("Task {0}:".format(task_key))
-            plot_matrices(np.concatenate((X_test_obs[0].cpu().data.numpy(), y_test_obs[:, torch.LongTensor(np.array(forward_steps) - 1).cuda()][0].cpu().data.numpy())))
-            latent_pred = get_forward_pred(generative_Net, X_test, forward_steps)
-            pred_recons = forward(autoencoder.decode, latent_pred)
-            plot_matrices(np.concatenate((forward(autoencoder.decode, X_test.view(X_test.size(0), -1, 2))[0].cpu().data.numpy(), pred_recons[0].cpu().data.numpy())))  
+        print("Task {0}:".format(task_key))
+        plot_matrices(np.concatenate((to_np_array(X_test_obs[0]), to_np_array(y_test_obs)[:, np.array(forward_steps) - 1][0])))
+        if master_model is not None:
+            statistics = master_model.statistics_Net.forward_inputs(X_train, y_train)
+            latent_pred = get_forward_pred(master_model.generative_Net, X_test, forward_steps, is_time_series = True, latent_param = statistics, jump_step = 2, is_flatten = False)
         else:
-            print("Task {0}:".format(task_key))
-            plot_matrices(np.concatenate((X_test_obs[0].data.numpy(), y_test_obs[:, torch.LongTensor(np.array(forward_steps) - 1)][0].data.numpy())))
-            latent_pred = get_forward_pred(generative_Net, X_test, forward_steps)
-            pred_recons = forward(autoencoder.decode, latent_pred)
-            plot_matrices(np.concatenate((forward(autoencoder.decode, X_test.view(X_test.size(0), -1, 2))[0].data.numpy(), pred_recons[0].data.numpy())))  
-
+            latent_pred = get_forward_pred(model, X_test, forward_steps, is_time_series = True, jump_step = 2, is_flatten = False)
+        pred_recons = forward(autoencoder.decode, latent_pred)
+        plot_matrices(np.concatenate((to_np_array(forward(autoencoder.decode, X_test.view(X_test.size(0), -1, 2))[0]), to_np_array(pred_recons[0]))))  
 
 
 class Conv_Autoencoder(nn.Module):
@@ -324,7 +320,7 @@ def train_epoch_joint(motion_train_loader, X_motion_test, y_motion_test, conv_en
 
 # ## Setting up:
 
-# In[ ]:
+# In[18]:
 
 
 task_id_list = [
@@ -344,7 +340,7 @@ task_id_list = [
 
 exp_id = "C-May13"
 exp_mode = "meta"
-# exp_mode = "finetune"
+exp_mode = "finetune"
 # exp_mode = "oracle"
 is_VAE = False
 is_uncertainty_net = False
@@ -377,7 +373,7 @@ elif task_id_list[0] == "bounce-images":
     input_size = 6
     output_size = 2
     reg_amp = 1e-7
-    forward_steps = [1]
+    forward_steps = [1,2]
     is_time_series = True
 else:
     raise
@@ -386,8 +382,8 @@ is_autoencoder = True
 max_forward_steps = 10
 
 lr = 5e-5
-num_train_tasks = 100
-num_test_tasks = 100
+num_train_tasks = 40
+num_test_tasks = 10
 batch_size_task = num_train_tasks
 num_iter = 10000
 pre_pooling_neurons = 200
@@ -399,7 +395,7 @@ main_hidden_neurons = (40, 40)
 activation_gen = "leakyRelu"
 activation_model = "leakyRelu"
 optim_mode = "indi"
-loss_core = "huber"
+loss_core = "mse"
 patience = 300
 array_id = 0
 
@@ -508,7 +504,7 @@ if exp_mode in ["meta"]:
                                                                       is_VAE = is_VAE,
                                                                       is_uncertainty_net = is_uncertainty_net,
                                                                       is_cuda = is_cuda,
-                                             )
+                                                                     )
     if is_regulated_net:
         struct_param_regulated_Net = [[num_neurons, "Simple_Layer", {}] for num_neurons in main_hidden_neurons]
         struct_param_regulated_Net.append([1, "Simple_Layer", {"activation": "linear"}])
@@ -608,7 +604,7 @@ train_loader = data_utils.DataLoader(X_train_all.data, batch_size = batch_size, 
 early_stopping_pre = Early_Stopping(patience = patience_pre)
 to_stop = False
 
-for epoch in range(31):
+for epoch in range(11):
     to_stop = train_epoch_pretrain(train_loader, X_test_all, autoencoder, optimizer_pre, isplot = isplot)
     if to_stop:
         print("Early stopping at iteration {0}".format(i))
@@ -642,32 +638,32 @@ for i in range(num_iter + 1):
                 ((X_train, y_train), (X_test, y_test)), _ = task
             for k in range(num_backwards):
                 optimizer.zero_grad()
+                if master_model is not None:
+                    results = master_model.get_predictions(X_test = X_test, X_train = X_train, y_train = y_train, is_time_series = is_time_series, 
+                                                           is_VAE = is_VAE, is_uncertainty_net = is_uncertainty_net, is_regulated_net = is_regulated_net, forward_steps = forward_steps)
+                else:
+                    results = {}
+                    results["y_pred"] = get_forward_pred(model, X_test, forward_steps, is_time_series = is_time_series, jump_step = 2, is_flatten = True)
                 if is_VAE:
                     statistics_mu, statistics_logvar = statistics_Net(torch.cat([X_train, y_train], 1))
                     statistics = sample_Gaussian(statistics_mu, statistics_logvar)
                     if is_regulated_net:
                         statistics = get_regulated_statistics(generative_Net, statistics)
-                    y_pred = generative_Net(X_train, statistics)
-                    loss, KLD = criterion(y_pred, y_train, mu = statistics_mu, logvar = statistics_logvar)
+                    y_pred = generative_Net(X_test, statistics)
+                    loss, KLD = criterion(y_pred, y_test, mu = statistics_mu, logvar = statistics_logvar)
                     KLD_total = KLD_total + KLD
                 else:
                     if is_uncertainty_net:
                         statistics_mu, statistics_logvar = statistics_Net(torch.cat([X_train, y_train], 1))
-                        y_pred = generative_Net(X_train, statistics_mu)
-                        y_pred_logstd = generative_Net_logstd(X_train, statistics_logvar)
-                        loss = criterion(y_pred, y_train, log_std = y_pred_logstd)
+                        y_pred = generative_Net(X_test, statistics_mu)
+                        y_pred_logstd = generative_Net_logstd(X_test, statistics_logvar)
+                        loss = criterion(y_pred, y_test, log_std = y_pred_logstd)
                     else:
-                        statistics = statistics_Net(torch.cat([X_train, y_train], 1))
-                        if is_regulated_net:
-                            statistics = get_regulated_statistics(generative_Net, statistics)
                         if is_autoencoder:
-                            generative_Net.set_latent_param(statistics)
-                            y_pred = get_forward_pred(generative_Net, X_train, forward_steps)
-                            loss = criterion(X_train, y_pred, X_train_obs, y_train_obs, autoencoder, verbose = False)
+                            loss = criterion(X_test, results["y_pred"], X_test_obs, y_test_obs, autoencoder, verbose = False)
                         else:
-                            y_pred = generative_Net(X_train, statistics)
-                            loss = criterion(y_pred, y_train)
-                reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, autoencoder = autoencoder, is_cuda = is_cuda)
+                            loss = criterion(results["y_pred"], y_test)
+                reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, net = model, autoencoder = autoencoder, is_cuda = is_cuda)
                 loss = loss + reg * reg_multiplier[i]
                 loss.backward(retain_graph = True)
                 optimizer.step()
@@ -694,30 +690,30 @@ for i in range(num_iter + 1):
                 y_test = forward(autoencoder.encode, y_test_obs)
             else:
                 ((X_train, y_train), (X_test, y_test)), _ = task
+            if master_model is not None:
+                results = master_model.get_predictions(X_test = X_test, X_train = X_train, y_train = y_train, is_time_series = is_time_series, 
+                                                       is_VAE = is_VAE, is_uncertainty_net = is_uncertainty_net, is_regulated_net = is_regulated_net, forward_steps = forward_steps)
+            else:
+                results = {}
+                results["y_pred"] = get_forward_pred(model, X_test, forward_steps, is_time_series = is_time_series, jump_step = 2, is_flatten = True)
             if is_VAE:
                 statistics_mu, statistics_logvar = statistics_Net(torch.cat([X_train, y_train], 1))
                 statistics = sample_Gaussian(statistics_mu, statistics_logvar)
-                y_pred = generative_Net(X_train, statistics)
-                loss, KLD = criterion(y_pred, y_train, mu = statistics_mu, logvar = statistics_logvar)
+                y_pred = generative_Net(X_test, statistics)
+                loss, KLD = criterion(y_pred, y_test, mu = statistics_mu, logvar = statistics_logvar)
                 loss = loss + KLD
             else:
                 if is_uncertainty_net:
                     statistics_mu, statistics_logvar = statistics_Net(torch.cat([X_train, y_train], 1))
-                    y_pred = generative_Net(X_train, statistics_mu)
-                    y_pred_logstd = generative_Net_logstd(X_train, statistics_logvar)
-                    loss = criterion(y_pred, y_train, log_std = y_pred_logstd)
+                    y_pred = generative_Net(X_test, statistics_mu)
+                    y_pred_logstd = generative_Net_logstd(X_test, statistics_logvar)
+                    loss = criterion(y_pred, y_test, log_std = y_pred_logstd)
                 else:
-                    statistics = statistics_Net(torch.cat([X_train, y_train], 1))
-                    if is_regulated_net:
-                        statistics = get_regulated_statistics(generative_Net, statistics)
                     if is_autoencoder:
-                        generative_Net.set_latent_param(statistics)
-                        y_pred = get_forward_pred(generative_Net, X_train, forward_steps)
-                        loss = criterion(X_train, y_pred, X_train_obs, y_train_obs, autoencoder)
+                        loss = criterion(X_test, results["y_pred"], X_test_obs, y_test_obs, autoencoder, verbose = False)
                     else:
-                        y_pred = generative_Net(X_train, statistics)
-                        loss = criterion(y_pred, y_train)    
-            reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, autoencoder = autoencoder, is_cuda = is_cuda)
+                        loss = criterion(results["y_pred"], y_test)
+            reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, autoencoder = autoencoder, net = model, is_cuda = is_cuda)
             loss_total = loss_total + loss + reg * reg_multiplier[i]
         loss_total.backward()
         optimizer.step()
@@ -735,9 +731,8 @@ for i in range(num_iter + 1):
         print("=" * 50)
         print("training tasks:")
         for task_key, task in tasks_train.items():
-            (_, (X_test, y_test)), _ = task
             loss_test, loss_test_sampled, mse, KLD_test = evaluate(task, master_model = master_model, model = model, criterion = criterion, is_VAE = is_VAE, is_regulated_net = is_regulated_net, autoencoder = autoencoder, forward_steps = forward_steps)
-            reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, autoencoder = autoencoder, is_cuda = is_cuda).data[0] * reg_multiplier[i]
+            reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, autoencoder = autoencoder, net = model, is_cuda = is_cuda).data[0] * reg_multiplier[i]
             data_record["loss"][task_key].append(loss_test)
             data_record["loss_sampled"][task_key].append(loss_test_sampled)
             data_record["mse"][task_key].append(mse)
@@ -745,15 +740,14 @@ for i in range(num_iter + 1):
             data_record["KLD"][task_key].append(KLD_test)
             print('{0}\ttrain\t{1}  \tloss: {2:.5f}\tloss_sampled:{3:.5f} \tmse:{4:.5f}\tKLD:{5:.6f}\treg:{6:.6f}'.format(i, task_key, loss_test, loss_test_sampled, mse, KLD_test, reg))
         for task_key, task in tasks_test.items():
-            (_, (X_test, y_test)), _ = task
             loss_test, loss_test_sampled, mse, KLD_test = evaluate(task, master_model = master_model, model = model, criterion = criterion, is_VAE = is_VAE, is_regulated_net = is_regulated_net, autoencoder = autoencoder, forward_steps = forward_steps)
-            reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, autoencoder = autoencoder, is_cuda = is_cuda).data[0] * reg_multiplier[i]
+            reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, autoencoder = autoencoder, net = model, is_cuda = is_cuda).data[0] * reg_multiplier[i]
             data_record["loss"][task_key].append(loss_test)
             data_record["loss_sampled"][task_key].append(loss_test_sampled)
             data_record["mse"][task_key].append(mse)
             data_record["reg"][task_key].append(reg)
             data_record["KLD"][task_key].append(KLD_test)
-            print('{0}\ttrain\t{1}  \tloss: {2:.5f}\tloss_sampled:{3:.5f} \tmse:{4:.5f}\tKLD:{5:.6f}\treg:{6:.6f}'.format(i, task_key, loss_test, loss_test_sampled, mse, KLD_test, reg))
+            print('{0}\ttest\t{1}  \tloss: {2:.5f}\tloss_sampled:{3:.5f} \tmse:{4:.5f}\tKLD:{5:.6f}\treg:{6:.6f}'.format(i, task_key, loss_test, loss_test_sampled, mse, KLD_test, reg))
         loss_train_list = [data_record["loss"][task_key][-1] for task_key in tasks_train]
         loss_test_list = [data_record["loss"][task_key][-1] for task_key in tasks_test]
         loss_train_sampled_list = [data_record["loss_sampled"][task_key][-1] for task_key in tasks_train]
@@ -803,7 +797,7 @@ for i in range(num_iter + 1):
             # Plotting individual test data:
             if "bounce" in task_id_list[0]:
                 if "bounce-images" in task_id_list[0]:
-                    plot_tasks(tasks_test, autoencoder, forward_steps, num_tasks = min(3, num_test_tasks))
+                    plot_tasks(tasks_test, master_model = master_model, model = model, autoencoder = autoencoder, forward_steps = forward_steps, num_tasks = min(3, num_test_tasks))
                 plot_individual_tasks_bounce(tasks_test, num_examples_show = 40, num_tasks_show = 6, master_model = master_model, model = model, autoencoder = autoencoder, num_shots = 200, target_forward_steps = len(forward_steps), eval_forward_steps = len(forward_steps))
             else:
                 print("train tasks:")
@@ -816,11 +810,9 @@ for i in range(num_iter + 1):
         except:
             pass
     if i % save_interval == 0 or to_stop:
-        record_data(info_dict, [master_model.model_dict, i], ["model_dict", "iter"])
-        if is_autoencoder:
-            record_data(info_dict, [autoencoder.state_dict()], ["autoencoder"])
+        model_save = master_model if master_model is not None else model
+        record_data(info_dict, [model_save.model_dict], ["model_dict"])
         make_dir(filename[:-1] + "/conv-meta_master-model")
-        torch.save(master_model.state_dict(), filename[:-1] + "/conv-meta_master-model_{0}.p".format(i))
         torch.save(autoencoder.state_dict(), filename[:-1] + "/conv-meta_autoencoder_{0}.p".format(i))
     if to_stop:
         print("The training loss stops decreasing for {0} steps. Early stopping at {1}.".format(patience, i))

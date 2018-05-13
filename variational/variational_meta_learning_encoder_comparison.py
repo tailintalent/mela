@@ -340,7 +340,7 @@ is_regulated_net = False
 is_load_data = False
 is_autoencoder = True
 forward_steps = [1]
-max_forward_steps = 1
+max_forward_steps = 10
 VAE_beta = 0.2
 exp_mode = "meta"
 
@@ -402,7 +402,7 @@ task_settings = {
     "xlim": (-4, 4),
     "activation": "softplus",
     "input_size": input_size,
-    "num_examples": 2000,
+    "num_examples": 100,
 }
 struct_param_pre = [
         [60, "Simple_Layer", {}],
@@ -446,7 +446,7 @@ if "tasks_train" not in locals():
 
 # ## Prepare nets:
 
-# In[9]:
+# In[12]:
 
 
 # Obtain nets:
@@ -564,6 +564,12 @@ for epoch in range(20):
         break
 
 
+# In[15]:
+
+
+model = None
+
+
 # ## Training:
 
 # In[ ]:
@@ -675,7 +681,7 @@ for i in range(num_iter + 1):
 
     loss_test_record = []
     for task_key, task in tasks_test.items():
-        loss_test, _, _, _ = evaluate(task, statistics_Net, generative_Net, generative_Net_logstd = generative_Net_logstd, criterion = criterion, is_VAE = is_VAE, is_regulated_net = is_regulated_net, autoencoder = autoencoder, forward_steps = forward_steps)
+        loss_test, _, _, _ = evaluate(task, master_model = master_model, model = model, criterion = criterion, is_VAE = is_VAE, is_regulated_net = is_regulated_net, autoencoder = autoencoder, forward_steps = forward_steps)
         loss_test_record.append(loss_test)
     to_stop = early_stopping.monitor(np.mean(loss_test_record))
 
@@ -685,7 +691,7 @@ for i in range(num_iter + 1):
         print("training tasks:")
         for task_key, task in tasks_train.items():
             (_, (X_test, y_test)), _ = task
-            loss_test, loss_test_sampled, mse, KLD_test = evaluate(task, statistics_Net, generative_Net, generative_Net_logstd = generative_Net_logstd, criterion = criterion, is_VAE = is_VAE, is_regulated_net = is_regulated_net, autoencoder = autoencoder, forward_steps = forward_steps)
+            loss_test, loss_test_sampled, mse, KLD_test = evaluate(task, master_model = master_model, model = model, criterion = criterion, is_VAE = is_VAE, is_regulated_net = is_regulated_net, autoencoder = autoencoder, forward_steps = forward_steps)
             reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, autoencoder = autoencoder, is_cuda = is_cuda).data[0] * reg_multiplier[i]
             data_record["loss"][task_key].append(loss_test)
             data_record["loss_sampled"][task_key].append(loss_test_sampled)
@@ -695,7 +701,7 @@ for i in range(num_iter + 1):
             print('{0}\ttrain\t{1}  \tloss: {2:.5f}\tloss_sampled:{3:.5f} \tmse:{4:.5f}\tKLD:{5:.6f}\treg:{6:.6f}'.format(i, task_key, loss_test, loss_test_sampled, mse, KLD_test, reg))
         for task_key, task in tasks_test.items():
             (_, (X_test, y_test)), _ = task
-            loss_test, loss_test_sampled, mse, KLD_test = evaluate(task, statistics_Net, generative_Net, generative_Net_logstd = generative_Net_logstd, criterion = criterion, is_VAE = is_VAE, is_regulated_net = is_regulated_net, autoencoder = autoencoder, forward_steps = forward_steps)
+            loss_test, loss_test_sampled, mse, KLD_test = evaluate(task, master_model = master_model, model = model, criterion = criterion, is_VAE = is_VAE, is_regulated_net = is_regulated_net, autoencoder = autoencoder, forward_steps = forward_steps)
             reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, autoencoder = autoencoder, is_cuda = is_cuda).data[0] * reg_multiplier[i]
             data_record["loss"][task_key].append(loss_test)
             data_record["loss_sampled"][task_key].append(loss_test_sampled)
@@ -739,8 +745,8 @@ for i in range(num_iter + 1):
             plot_data_record(data_record, is_VAE = is_VAE)
 
         # Plotting y_pred vs. y_target:
-        statistics_list_train, z_list_train = plot_task_ensembles(tasks_train, statistics_Net, generative_Net, is_VAE = is_VAE, is_regulated_net = is_regulated_net, autoencoder = autoencoder, title = "y_pred_train vs. y_train", isplot = isplot, forward_steps = forward_steps, )
-        statistics_list_test, z_list_test = plot_task_ensembles(tasks_test, statistics_Net, generative_Net, is_VAE = is_VAE, is_regulated_net = is_regulated_net, autoencoder = autoencoder, title = "y_pred_test vs. y_test", isplot = isplot, forward_steps = forward_steps, )
+        statistics_list_train, z_list_train = plot_task_ensembles(tasks_train, master_model = master_model, model = model, is_VAE = is_VAE, is_regulated_net = is_regulated_net, autoencoder = autoencoder, title = "y_pred_train vs. y_train", isplot = isplot, forward_steps = forward_steps, )
+        statistics_list_test, z_list_test = plot_task_ensembles(tasks_test, master_model = master_model, model = model, is_VAE = is_VAE, is_regulated_net = is_regulated_net, autoencoder = autoencoder, title = "y_pred_test vs. y_test", isplot = isplot, forward_steps = forward_steps, )
         record_data(data_record, [np.array(z_list_train), np.array(z_list_test), np.array(statistics_list_train), np.array(statistics_list_test)], 
                     ["z_list_train_list", "z_list_test_list", "statistics_list_train_list", "statistics_list_test_list"])
         if isplot:
@@ -753,7 +759,7 @@ for i in range(num_iter + 1):
             if "bounce" in task_id_list[0]:
                 if "bounce-images" in task_id_list[0]:
                     plot_tasks(tasks_test, autoencoder, forward_steps, num_tasks = min(3, num_test_tasks))
-                plot_individual_tasks_bounce(tasks_test, num_examples_show = 40, num_tasks_show = 6, master_model = master_model, autoencoder = autoencoder, num_shots = 200, forward_steps = forward_steps)
+                plot_individual_tasks_bounce(tasks_test, num_examples_show = 40, num_tasks_show = 6, master_model = master_model, model = model, autoencoder = autoencoder, num_shots = 200, target_forward_steps = len(forward_steps), eval_forward_steps = len(forward_steps))
             else:
                 print("train tasks:")
                 plot_individual_tasks(tasks_train, statistics_Net, generative_Net, generative_Net_logstd = generative_Net_logstd, is_VAE = is_VAE, is_regulated_net = is_regulated_net, xlim = task_settings["xlim"])

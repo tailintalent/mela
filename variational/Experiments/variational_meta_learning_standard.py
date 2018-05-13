@@ -47,7 +47,7 @@ is_cuda = torch.cuda.is_available()
 
 # ## Training:
 
-# In[2]:
+# In[ ]:
 
 
 task_id_list = [
@@ -65,7 +65,7 @@ task_id_list = [
 # "bounce-images",
 ]
 
-exp_id = "C-May12"
+exp_id = "C-May13"
 exp_mode = "meta"
 # exp_mode = "finetune"
 # exp_mode = "oracle"
@@ -307,7 +307,7 @@ for i in range(num_iter + 1):
                     loss = criterion(results["y_pred"], y_test, log_std = results["y_pred_logstd"])
                 else:
                     loss = criterion(results["y_pred"], y_test)
-            reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, is_cuda = is_cuda)
+            reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, net = model, is_cuda = is_cuda)
             loss_total = loss_total + loss + reg
         loss_total.backward()
         optimizer.step()
@@ -328,7 +328,7 @@ for i in range(num_iter + 1):
         print("training tasks:")
         for task_key, task in tasks_train.items():
             loss_test, loss_test_sampled, mse, KLD_test = evaluate(task, master_model = master_model, model = model, criterion = criterion, is_time_series = is_time_series, is_VAE = is_VAE, is_regulated_net = is_regulated_net, forward_steps = forward_steps)
-            reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, is_cuda = is_cuda).data[0]
+            reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, net = model, is_cuda = is_cuda).data[0]
             data_record["loss"][task_key].append(loss_test)
             data_record["loss_sampled"][task_key].append(loss_test_sampled)
             data_record["mse"][task_key].append(mse)
@@ -337,7 +337,7 @@ for i in range(num_iter + 1):
             print('{0}\ttrain\t{1}  \tloss: {2:.9f}\tloss_sampled:{3:.9f} \tmse:{4:.9f}\tKLD:{5:.9f}\treg:{6:.9f}'.format(i, task_key, loss_test, loss_test_sampled, mse, KLD_test, reg))
         for task_key, task in tasks_test.items():
             loss_test, loss_test_sampled, mse, KLD_test = evaluate(task, master_model = master_model, model = model, criterion = criterion, is_time_series = is_time_series, is_VAE = is_VAE, is_regulated_net = is_regulated_net, forward_steps = forward_steps)
-            reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, is_cuda = is_cuda).data[0]
+            reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, net = model, is_cuda = is_cuda).data[0]
             data_record["loss"][task_key].append(loss_test)
             data_record["loss_sampled"][task_key].append(loss_test_sampled)
             data_record["mse"][task_key].append(mse)
@@ -406,9 +406,9 @@ for i in range(num_iter + 1):
             pass
     if i % save_interval == 0 or to_stop:
         if master_model is not None:
-            record_data(info_dict, [master_model.model_dict, i], ["model_dict", "iter"])
+            record_data(info_dict, [master_model.model_dict], ["model_dict"])
         else:
-            record_data(info_dict, [model.model_dict, i], ["model_dict", "iter"])
+            record_data(info_dict, [model.model_dict], ["model_dict"])
         pickle.dump(info_dict, open(filename + "info.p", "wb"))
     if to_stop:
         print("The training loss stops decreasing for {0} steps. Early stopping at {1}.".format(patience, i))
