@@ -38,10 +38,10 @@ from AI_scientist.variational.variational_meta_learning import get_latent_model_
 # In[ ]:
 
 
-task_id = "C-tanh"
+# task_id = "C-tanh"
 # task_id = "C-sin"
 # task_id = "bounce-states"
-
+task_id = "bounce-images"
 seed = 1
 
 np.random.seed(seed)
@@ -49,16 +49,19 @@ torch.manual_seed(seed)
 
 if task_id in ["C-sin", "C-tanh"]:
     num_shots = 10
-    task_settings = {"test_size": 0.5, "num_examples": num_shots * 2}
     num_train_tasks = 100
     num_test_tasks = 20000
 elif task_id == "bounce-states":
     num_shots = 100
-    task_settings = {"test_size": 0.5, "num_examples": num_shots * 2}
     num_train_tasks = 100
     num_test_tasks = 1000
+elif task_id == "bounce-images":
+    num_shots = 100
+    num_train_tasks = 100
+    num_test_tasks = 100
 else:
     raise
+task_settings = {"test_size": 0.5, "num_examples": num_shots * 2}
 tasks_train, tasks_test = get_tasks([task_id], num_train_tasks, num_test_tasks, task_settings = task_settings, forward_steps = list(range(1,11)))
 filename = dataset_PATH_short + task_id + "_{0}-shot.p".format(num_shots)
 
@@ -70,29 +73,32 @@ pickle.dump(tasks, open(filename, "wb"))
 
 # ## Load_tasks:
 
-# In[3]:
+# In[8]:
 
 
-task_id = "C-tanh"
+# task_id = "C-tanh"
 # task_id = "C-sin"
 # task_id = "bounce-states"
-if task_id == "C-tanh":
+task_id = "bounce-images"
+if task_id in ["C-sin", "C-tanh"]:
     num_shots = 10
+elif task_id in ["bounce-states", "bounce-images"]:
+    num_shots = 100
 
-filename = dataset_PATH + task_id + "_{0}-shot.p".format(num_shots)
+filename = dataset_PATH_short + task_id + "_{0}-shot.p".format(num_shots)
 tasks = pickle.load(open(filename, "rb"))
 
 tasks_train = tasks["tasks_train"]
 tasks_test = tasks["tasks_test"]
 
 
-# In[4]:
+# In[9]:
 
 
 len(tasks_train)
 
 
-# In[5]:
+# In[10]:
 
 
 len(tasks_test)
@@ -104,7 +110,6 @@ len(tasks_test)
 # Train with training tasks:
 for task in tasks_train:
     ((X_train, y_train), (X_test, y_test)), _ = task
-   
 
 # Validate with testing tasks:
 # This is only for tanh/sin tasks, where we partition the 20000 testing tasks into 200 x evaluations, and each evaluation has 100 testing tasks:

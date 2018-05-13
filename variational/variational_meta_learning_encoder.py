@@ -20,10 +20,11 @@ import torch.utils.data as data_utils
 import sys, os
 sys.path.append(os.path.join(os.path.dirname("__file__"), '..', '..'))
 from AI_scientist.util import plot_matrices, make_dir, get_struct_str, get_args, Early_Stopping, record_data, manifold_embedding
-from AI_scientist.settings.filepath import variational_model_PATH
+from AI_scientist.settings.filepath import variational_model_PATH, dataset_PATH_short
 from AI_scientist.pytorch.modules import Simple_Layer
 from AI_scientist.pytorch.net import Net, ConvNet
 from AI_scientist.pytorch.util_pytorch import Loss_with_uncertainty, get_criterion, to_np_array
+from AI_scientist.variational.util_variational import get_torch_tasks
 from AI_scientist.variational.variational_meta_learning import Master_Model, Statistics_Net, Generative_Net, load_model_dict, get_regulated_statistics
 from AI_scientist.variational.variational_meta_learning import VAE_Loss, sample_Gaussian, clone_net, get_nets, get_tasks, evaluate, get_reg, load_trained_models
 from AI_scientist.variational.variational_meta_learning import forward, get_forward_pred, get_rollout_pred_loss, get_autoencoder_losses, Loss_with_autoencoder
@@ -320,7 +321,7 @@ def train_epoch_joint(motion_train_loader, X_motion_test, y_motion_test, conv_en
 
 # ## Setting up:
 
-# In[18]:
+# In[ ]:
 
 
 task_id_list = [
@@ -340,7 +341,7 @@ task_id_list = [
 
 exp_id = "C-May13"
 exp_mode = "meta"
-exp_mode = "finetune"
+# exp_mode = "finetune"
 # exp_mode = "oracle"
 is_VAE = False
 is_uncertainty_net = False
@@ -373,7 +374,7 @@ elif task_id_list[0] == "bounce-images":
     input_size = 6
     output_size = 2
     reg_amp = 1e-7
-    forward_steps = [1,2]
+    forward_steps = [1]
     is_time_series = True
 else:
     raise
@@ -382,8 +383,8 @@ is_autoencoder = True
 max_forward_steps = 10
 
 lr = 5e-5
-num_train_tasks = 40
-num_test_tasks = 10
+num_train_tasks = 100
+num_test_tasks = 100
 batch_size_task = num_train_tasks
 num_iter = 10000
 pre_pooling_neurons = 200
@@ -436,23 +437,11 @@ if is_oracle:
 print("exp_mode: {0}".format(exp_mode))
 
 # Obtain tasks:
-if "tasks_train" not in locals():
-    if is_load_data:
-        try:
-            dataset = pickle.load(open(filename + "data.p", "rb"))
-            tasks_train = dataset["tasks_train"]
-            tasks_test = dataset["tasks_test"]
-            print("dataset loaded.")
-        except:
-            print("dataset do not exist. Create one")
-            tasks_train, tasks_test = get_tasks(task_id_list, num_train_tasks, num_test_tasks, task_settings = task_settings, is_cuda = is_cuda, forward_steps = list(range(1, max_forward_steps + 1)))
-            dataset = {"tasks_train": tasks_train, "tasks_test": tasks_test}
-    #         pickle.dump(dataset, open(filename + "data.p", "wb"))
-    else:
-        tasks_train, tasks_test = get_tasks(task_id_list, num_train_tasks, num_test_tasks, task_settings = task_settings, is_cuda = is_cuda, forward_steps = list(range(1, max_forward_steps + 1)))
-        dataset = {"tasks_train": tasks_train, "tasks_test": tasks_test}
-    #     pickle.dump(dataset, open(filename + "data.p", "wb"))
-        print("dataset saved.")
+assert len(task_id_list) == 1
+dataset_filename = dataset_PATH_short + task_id_list[0] + "_{0}-shot.p".format(num_shots)
+tasks = pickle.load(open(dataset_filename, "rb"))
+tasks_train = get_torch_tasks(tasks["tasks_train"], task_id_list[0], num_forward_steps = forward_steps[-1], is_oracle = is_oracle, is_cuda = is_cuda)
+tasks_test = get_torch_tasks(tasks["tasks_test"], task_id_list[0], start_id = num_train_tasks, num_tasks = num_test_tasks, num_forward_steps = forward_steps[-1], is_oracle = is_oracle, is_cuda = is_cuda)
 
 # Obtain autoencoder:
 aux_coeff = 0.3
