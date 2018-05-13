@@ -18,9 +18,19 @@ from torch.autograd import Variable
 import torch.utils.data as data_utils
 
 import sys, os
-sys.path.append(os.path.join(os.path.dirname("__file__"), '..', '..'))
+try:
+    get_ipython().run_line_magic('matplotlib', 'inline')
+    sys.path.append(os.path.join(os.path.dirname("__file__"), '..', '..', '..'))
+    from AI_scientist.settings.filepath import variational_model_PATH, dataset_PATH
+    isplot = True
+except:
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+    from AI_scientist.settings.filepath import variational_model_PATH, dataset_PATH
+#     if dataset_PATH[:2] == "..":
+#         dataset_PATH = dataset_PATH[3:]
+    isplot = False
+
 from AI_scientist.util import plot_matrices, make_dir, get_struct_str, get_args, Early_Stopping, record_data, manifold_embedding
-from AI_scientist.settings.filepath import variational_model_PATH, dataset_PATH_short
 from AI_scientist.pytorch.modules import Simple_Layer
 from AI_scientist.pytorch.net import Net, ConvNet
 from AI_scientist.pytorch.util_pytorch import Loss_with_uncertainty, get_criterion, to_np_array
@@ -37,11 +47,6 @@ np.random.seed(seed)
 torch.manual_seed(seed)
 is_cuda = torch.cuda.is_available()
 print("is_cuda: {0}".format(is_cuda))
-try:
-    get_ipython().run_line_magic('matplotlib', 'inline')
-    isplot = True
-except:
-    isplot = False
 
 
 # In[2]:
@@ -438,7 +443,7 @@ print("exp_mode: {0}".format(exp_mode))
 
 # Obtain tasks:
 assert len(task_id_list) == 1
-dataset_filename = dataset_PATH_short + task_id_list[0] + "_{0}-shot.p".format(num_shots)
+dataset_filename = dataset_PATH + task_id_list[0] + "_{0}-shot.p".format(num_shots)
 tasks = pickle.load(open(dataset_filename, "rb"))
 tasks_train = get_torch_tasks(tasks["tasks_train"], task_id_list[0], num_forward_steps = forward_steps[-1], is_oracle = is_oracle, is_cuda = is_cuda)
 tasks_test = get_torch_tasks(tasks["tasks_test"], task_id_list[0], start_id = num_train_tasks, num_tasks = num_test_tasks, num_forward_steps = forward_steps[-1], is_oracle = is_oracle, is_cuda = is_cuda)
