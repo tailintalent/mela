@@ -33,7 +33,7 @@ from AI_scientist.util import plot_matrices, make_dir, get_struct_str, get_args,
 from AI_scientist.pytorch.net import Net
 from AI_scientist.pytorch.util_pytorch import Loss_with_uncertainty
 from AI_scientist.variational.util_variational import get_torch_tasks
-from AI_scientist.variational.variational_meta_learning import Master_Model, Statistics_Net, Generative_Net, load_model_dict, get_regulated_statistics
+from AI_scientist.variational.variational_meta_learning import Master_Model, Statistics_Net, Generative_Net, load_model_dict, get_regulated_statistics, get_forward_pred
 from AI_scientist.variational.variational_meta_learning import VAE_Loss, sample_Gaussian, clone_net, get_nets, get_tasks, evaluate, get_reg, load_trained_models
 from AI_scientist.variational.variational_meta_learning import plot_task_ensembles, plot_individual_tasks, plot_statistics_vs_z, plot_data_record, get_corrcoef
 from AI_scientist.variational.variational_meta_learning import plot_few_shot_loss, plot_individual_tasks_bounce, plot_quick_learn_performance
@@ -47,7 +47,7 @@ is_cuda = torch.cuda.is_available()
 
 # ## Training:
 
-# In[ ]:
+# In[2]:
 
 
 task_id_list = [
@@ -92,7 +92,7 @@ elif task_id_list[0] == "bounce-states":
     input_size = 6
     output_size = 2
     reg_amp = 1e-8
-    forward_steps = [1, 2]
+    forward_steps = [1]
     is_time_series = True
 elif task_id_list[0] == "bounce-images":
     raise
@@ -264,7 +264,7 @@ for i in range(num_iter + 1):
                                                           is_VAE = is_VAE, is_uncertainty_net = is_uncertainty_net, is_regulated_net = is_regulated_net, forward_steps = forward_steps)
                 else:
                     results = {}
-                    results["y_pred"] = model(X_test)
+                    results["y_pred"] = get_forward_pred(model, X_test, forward_steps, is_time_series = is_time_series, jump_step = 2, is_flatten = True)
                 if is_VAE:
                     loss, KLD = criterion(results["y_pred"], y_test, mu = results["statistics_mu"], logvar = results["statistics_logvar"])
                     KLD_total = KLD_total + KLD
@@ -298,7 +298,7 @@ for i in range(num_iter + 1):
                                                       is_VAE = is_VAE, is_uncertainty_net = is_uncertainty_net, is_regulated_net = is_regulated_net, forward_steps = forward_steps)
             else:
                 results = {}
-                results["y_pred"] = model(X_test)
+                results["y_pred"] = get_forward_pred(model, X_test, forward_steps, is_time_series = is_time_series, jump_step = 2, is_flatten = True)
             if is_VAE:
                 loss, KLD = criterion(results["y_pred"], y_test, mu = results["statistics_mu"], logvar = results["statistics_logvar"])
                 loss = loss + KLD

@@ -880,9 +880,9 @@ def evaluate(task, master_model = None, model = None, criterion = None, is_time_
                     statistics = get_regulated_statistics(master_model.generative_Net, statistics)
                 if autoencoder is not None:
                     master_model.generative_Net.set_latent_param(statistics)
-                    y_pred = get_forward_pred(master_model.generative_Net, X_train, forward_steps, is_time_series = is_time_series)
-                    loss = criterion(X_train, y_pred, X_train_obs, y_train_obs, autoencoder)
-                    mse = criterion(X_train, y_pred, X_train_obs, y_train_obs, autoencoder, loss_fun = loss_fun, verbose = False)
+                    y_pred = get_forward_pred(master_model.generative_Net, X_test, forward_steps, is_time_series = is_time_series)
+                    loss = criterion(X_test, y_pred, X_test_obs, y_test_obs, autoencoder)
+                    mse = criterion(X_test, y_pred, X_test_obs, y_test_obs, autoencoder, loss_fun = loss_fun, verbose = False)
                 else:
                     y_pred = get_forward_pred(master_model.generative_Net, X_test, forward_steps, is_time_series = is_time_series, latent_param = statistics, jump_step = 2, is_flatten = True)
                     loss = criterion(y_pred, y_test)
@@ -899,11 +899,11 @@ def evaluate(task, master_model = None, model = None, criterion = None, is_time_
             return loss.data[0], loss.data[0], mse.data[0], 0
     else:
         if autoencoder is not None:
-            y_pred = get_forward_pred(model, X_train, forward_steps, is_time_series = True)
-            loss = loss_sampled = loss_test_sampled = criterion(X_train, y_pred, X_train_obs, y_train_obs, autoencoder)
-            mse = criterion(X_train, y_pred, X_train_obs, y_train_obs, autoencoder, loss_fun = loss_fun, verbose = True)
+            y_pred = get_forward_pred(model, X_test, forward_steps, is_time_series = True)
+            loss = loss_sampled = loss_test_sampled = criterion(X_test, y_pred, X_test_obs, y_test_obs, autoencoder)
+            mse = criterion(X_test, y_pred, X_test_obs, y_test_obs, autoencoder, loss_fun = loss_fun, verbose = True)
         else:
-            y_pred = model(X_test)
+            y_pred = get_forward_pred(model, X_test, forward_steps, is_time_series = True)
             loss = loss_sampled = criterion(y_pred, y_test)
             mse = loss_fun(y_pred, y_test)
         return loss.data[0], loss_sampled.data[0], mse.data[0], 0     
