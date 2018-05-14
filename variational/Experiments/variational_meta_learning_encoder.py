@@ -26,8 +26,8 @@ try:
 except:
     sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
     from AI_scientist.settings.filepath import variational_model_PATH, dataset_PATH
-#     if dataset_PATH[:2] == "..":
-#         dataset_PATH = dataset_PATH[3:]
+    if dataset_PATH[:2] == "..":
+        dataset_PATH = dataset_PATH[3:]
     isplot = False
 
 from AI_scientist.util import plot_matrices, make_dir, get_struct_str, get_args, Early_Stopping, record_data, manifold_embedding
@@ -598,11 +598,13 @@ train_loader = data_utils.DataLoader(X_train_all.data, batch_size = batch_size, 
 early_stopping_pre = Early_Stopping(patience = patience_pre)
 to_stop = False
 
+print("Pre-train autoencoder:")
 for epoch in range(11):
     to_stop = train_epoch_pretrain(train_loader, X_test_all, autoencoder, optimizer_pre, isplot = isplot)
     if to_stop:
         print("Early stopping at iteration {0}".format(i))
         break
+print("Pretrain completed!")
 
 
 # ## Training:
