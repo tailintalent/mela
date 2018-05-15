@@ -899,11 +899,11 @@ def evaluate(task, master_model = None, model = None, criterion = None, is_time_
             return loss.data[0], loss.data[0], mse.data[0], 0
     else:
         if autoencoder is not None:
-            y_pred = get_forward_pred(model, X_test, forward_steps, is_time_series = True)
+            y_pred = get_forward_pred(model, X_test, forward_steps, is_time_series = is_time_series)
             loss = loss_sampled = loss_test_sampled = criterion(X_test, y_pred, X_test_obs, y_test_obs, autoencoder)
             mse = criterion(X_test, y_pred, X_test_obs, y_test_obs, autoencoder, loss_fun = loss_fun, verbose = True)
         else:
-            y_pred = get_forward_pred(model, X_test, forward_steps, is_time_series = True)
+            y_pred = get_forward_pred(model, X_test, forward_steps, is_time_series = is_time_series)
             loss = loss_sampled = criterion(y_pred, y_test)
             mse = loss_fun(y_pred, y_test)
         return loss.data[0], loss_sampled.data[0], mse.data[0], 0     
