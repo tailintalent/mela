@@ -429,45 +429,47 @@ sys.stdout.flush()
 
 # ## Testing:
 
-# In[ ]:
+# In[4]:
 
 
-lr = 1e-3
+def get_test_result(model, lr, isplot = True):
+    print(dataset_filename)
+    tasks = pickle.load(open(dataset_filename, "rb"))
+    tasks_test = get_torch_tasks(tasks["tasks_test"], task_id_list[0], start_id = num_train_tasks, num_forward_steps = forward_steps[-1], is_oracle = is_oracle, is_cuda = is_cuda)
 
-print(dataset_filename)
-tasks = pickle.load(open(dataset_filename, "rb"))
-tasks_test = get_torch_tasks(tasks["tasks_test"], task_id_list[0], start_id = num_train_tasks, num_forward_steps = 1, is_oracle = is_oracle, is_cuda = is_cuda)
-
-task_keys_all = list(tasks_test.keys())
-mse_list_all = []
-for i in range(int(len(tasks_test) / 100)):
-    print("{0}:".format(i))
-    task_keys_iter = task_keys_all[i * 100: (i + 1) * 100]
-    tasks_test_iter = {task_key: tasks_test[task_key] for task_key in task_keys_iter}
-    mse = plot_quick_learn_performance(master_model if master_model is not None else model, tasks_test_iter, lr = lr, epochs = 20, isplot = isplot)['model_0'].mean(0)
-    mse_list_all.append(mse)
-mse_list_all = np.array(mse_list_all)
-info_dict["mse_test"] = mse_list_all
-pickle.dump(info_dict, open(filename + "info.p", "wb"))
-print("mean:")
-print(mse_list_all.mean(0))
-print("std:")
-print(mse_list_all.std(0))
-
-
-# In[ ]:
-
-
-if isplot:
-    plt.figure(figsize = (8,6))
+    task_keys_all = list(tasks_test.keys())
+    mse_list_all = []
+    for i in range(int(len(tasks_test) / 100)):
+        print("{0}:".format(i))
+        task_keys_iter = task_keys_all[i * 100: (i + 1) * 100]
+        tasks_test_iter = {task_key: tasks_test[task_key] for task_key in task_keys_iter}
+        mse = plot_quick_learn_performance(model, tasks_test_iter, is_time_series = is_time_series, lr = lr, epochs = 20, isplot = isplot)['model_0'].mean(0)
+        mse_list_all.append(mse)
     mse_list_all = np.array(mse_list_all)
-    mse_mean = mse_list_all.mean(0)
-    mse_std = mse_list_all.std(0)
+    info_dict["mse_test_lr_{0}".format(lr)] = mse_list_all
+    pickle.dump(info_dict, open(filename + "info.p", "wb"))
+    print("mean:")
+    print(mse_list_all.mean(0))
+    print("std:")
+    print(mse_list_all.std(0))
+    if isplot:
+        plt.figure(figsize = (8,6))
+        mse_list_all = np.array(mse_list_all)
+        mse_mean = mse_list_all.mean(0)
+        mse_std = mse_list_all.std(0)
 
-    plt.fill_between(range(len(mse_mean)), mse_mean - mse_std * 1.96 / np.sqrt(int(len(tasks_test) / 100)), mse_mean + mse_std * 1.96 / np.sqrt(int(len(tasks_test) / 100)), alpha = 0.3)
-    plt.plot(range(len(mse_mean)), mse_mean)
-    plt.title("{0}, {1}-shot regression".format(task_id_list[0], num_shots), fontsize = 20)
-    plt.xlabel("Number of gradient steps", fontsize = 18)
-    plt.ylabel("Mean Squared Error", fontsize = 18)
-    plt.show()
+        plt.fill_between(range(len(mse_mean)), mse_mean - mse_std * 1.96 / np.sqrt(int(len(tasks_test) / 100)), mse_mean + mse_std * 1.96 / np.sqrt(int(len(tasks_test) / 100)), alpha = 0.3)
+        plt.plot(range(len(mse_mean)), mse_mean)
+        plt.title("{0}, {1}-shot regression, lr = {2}".format(task_id_list[0], num_shots, lr), fontsize = 20)
+        plt.xlabel("Number of gradient steps", fontsize = 18)
+        plt.ylabel("Mean Squared Error", fontsize = 18)
+        plt.show()
+    return mse_list_all
+
+
+# In[ ]:
+
+
+for lr in [1e-3, 5e-4, 2e-4]:
+    mse_list_all = get_test_result(master_model if master_model is not None else model, lr = lr, isplot = isplot)
 
