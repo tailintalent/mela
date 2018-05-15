@@ -59,9 +59,9 @@ task_id_list = [
 # "M-Gaussian",
 # "M-tanh",
 # "M-softplus",
-"C-sin",
+# "C-sin",
 # "C-tanh",
-# "bounce-states",
+"bounce-states",
 # "bounce-images",
 ]
 
@@ -92,7 +92,7 @@ elif task_id_list[0] == "bounce-states":
     input_size = 6
     output_size = 2
     reg_amp = 1e-8
-    forward_steps = [1]
+    forward_steps = (1,2)
     is_time_series = True
 elif task_id_list[0] == "bounce-images":
     raise
@@ -134,7 +134,8 @@ optim_mode = get_args(optim_mode, 17)
 is_uncertainty_net = get_args(is_uncertainty_net, 18, "bool")
 loss_core = get_args(loss_core, 19)
 patience = get_args(patience, 20, "int")
-array_id = get_args(array_id, 21)
+forward_steps = get_args(forward_steps, 21, "tuple")
+array_id = get_args(array_id, 22)
 
 # Settings:
 task_settings = {
@@ -236,8 +237,8 @@ record_data(data_record, [exp_id, tasks_train, tasks_test, task_id_list, task_se
             ["exp_id", "tasks_train", "tasks_test", "task_id_list", "task_settings", "reg_dict", "is_uncertainty_net", "lr", "pre_pooling_neurons", "num_backwards", "batch_size_task",
              "statistics_pooling", "activation_gen", "activation_model"])
 
-filename = variational_model_PATH + "/trained_models/{0}/Net_{1}_{2}_input_{3}_({4},{5})_stat_{6}_pre_{7}_pool_{8}_context_{9}_hid_{10}_{11}_{12}_VAE_{13}_{14}_uncer_{15}_lr_{16}_reg_{17}_actgen_{18}_actmodel_{19}_{20}_core_{21}_pat_{22}_{23}_".format(
-    exp_id, exp_mode, task_id_list, input_size, num_train_tasks, num_test_tasks, statistics_output_neurons, pre_pooling_neurons, statistics_pooling, num_context_neurons, main_hidden_neurons, struct_param_pre_neurons, struct_param_gen_base_neurons, is_VAE, VAE_beta, is_uncertainty_net, lr, reg_amp, activation_gen, activation_model, optim_mode, loss_core, patience, exp_id)
+filename = variational_model_PATH + "/trained_models/{0}/Net_{1}_{2}_input_{3}_({4},{5})_stat_{6}_pre_{7}_pool_{8}_context_{9}_hid_{10}_{11}_{12}_VAE_{13}_{14}_uncer_{15}_lr_{16}_reg_{17}_actgen_{18}_actmodel_{19}_{20}_core_{21}_pat_{22}_for_{23}_{24}_".format(
+    exp_id, exp_mode, task_id_list, input_size, num_train_tasks, num_test_tasks, statistics_output_neurons, pre_pooling_neurons, statistics_pooling, num_context_neurons, main_hidden_neurons, struct_param_pre_neurons, struct_param_gen_base_neurons, is_VAE, VAE_beta, is_uncertainty_net, lr, reg_amp, activation_gen, activation_model, optim_mode, loss_core, patience, forward_steps[-1], exp_id)
 make_dir(filename)
 print(filename)
 
@@ -429,7 +430,7 @@ sys.stdout.flush()
 
 # ## Testing:
 
-# In[4]:
+# In[6]:
 
 
 def get_test_result(model, lr, isplot = True):
@@ -443,7 +444,7 @@ def get_test_result(model, lr, isplot = True):
         print("{0}:".format(i))
         task_keys_iter = task_keys_all[i * 100: (i + 1) * 100]
         tasks_test_iter = {task_key: tasks_test[task_key] for task_key in task_keys_iter}
-        mse = plot_quick_learn_performance(model, tasks_test_iter, is_time_series = is_time_series, lr = lr, epochs = 20, isplot = isplot)['model_0'].mean(0)
+        mse = plot_quick_learn_performance(model, tasks_test_iter, is_time_series = is_time_series, forward_steps = forward_steps, lr = lr, epochs = 20, isplot = isplot)['model_0'].mean(0)
         mse_list_all.append(mse)
     mse_list_all = np.array(mse_list_all)
     info_dict["mse_test_lr_{0}".format(lr)] = mse_list_all

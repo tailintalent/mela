@@ -424,7 +424,8 @@ optim_mode = get_args(optim_mode, 17)
 is_uncertainty_net = get_args(is_uncertainty_net, 18, "bool")
 loss_core = get_args(loss_core, 19)
 patience = get_args(patience, 20, "int")
-array_id = get_args(array_id, 21)
+forward_steps = get_args(forward_steps, 21, "tuple")
+array_id = get_args(array_id, 22)
 
 # Settings:
 task_settings = {
@@ -561,8 +562,8 @@ else:
             criterion = loss_fun_core
 early_stopping = Early_Stopping(patience = patience)
 
-filename = variational_model_PATH + "/trained_models/{0}/ENet_{1}_{2}_input_{3}_({4},{5})_stat_{6}_pre_{7}_pool_{8}_context_{9}_hid_{10}_{11}_{12}_VAE_{13}_{14}_uncer_{15}_lr_{16}_reg_{17}_actgen_{18}_actmodel_{19}_{20}_core_{21}_pat_{22}_{23}_".format(
-    exp_id, exp_mode, task_id_list, input_size, num_train_tasks, num_test_tasks, statistics_output_neurons, pre_pooling_neurons, statistics_pooling, num_context_neurons, main_hidden_neurons, struct_param_pre_neurons, struct_param_gen_base_neurons, is_VAE, VAE_beta, is_uncertainty_net, lr, reg_amp, activation_gen, activation_model, optim_mode, loss_core, patience, exp_id)
+filename = variational_model_PATH + "/trained_models/{0}/ENet_{1}_{2}_input_{3}_({4},{5})_stat_{6}_pre_{7}_pool_{8}_context_{9}_hid_{10}_{11}_{12}_VAE_{13}_{14}_uncer_{15}_lr_{16}_reg_{17}_actgen_{18}_actmodel_{19}_{20}_core_{21}_pat_{22}_for_{23}_{24}_".format(
+    exp_id, exp_mode, task_id_list, input_size, num_train_tasks, num_test_tasks, statistics_output_neurons, pre_pooling_neurons, statistics_pooling, num_context_neurons, main_hidden_neurons, struct_param_pre_neurons, struct_param_gen_base_neurons, is_VAE, VAE_beta, is_uncertainty_net, lr, reg_amp, activation_gen, activation_model, optim_mode, loss_core, patience, forward_steps[-1], exp_id)
 make_dir(filename)
 print(filename)
 
