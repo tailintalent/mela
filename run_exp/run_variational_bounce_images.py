@@ -46,7 +46,7 @@ VAE_beta=[
 
 lr=[
 5e-5,
-1e-4,
+2e-4,
 ]
 
 pre_pooling_neurons=[
@@ -120,6 +120,11 @@ patience=[
 300,
 ]
 
+forward_steps=[
+'\(1\)',
+#'\(1,2\)',
+]
+
 def assign_array_id(array_id, param_list):
     if len(param_list) == 0:
         print("redundancy: {0}".format(array_id))
@@ -152,6 +157,7 @@ param_list = [exp_id,
             is_uncertainty_net,
             loss_core,
             patience,
+            forward_steps,
 ]
 param_chosen = assign_array_id(array_id, param_list)
 exec_str = "python ../variational/Experiments/variational_meta_learning_encoder.py"

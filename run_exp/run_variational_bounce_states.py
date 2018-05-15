@@ -1,7 +1,7 @@
 import os, sys
 
 exp_id=[
-"syn2.01",
+"syn2.02",
 ]
 
 exp_mode = [
@@ -29,7 +29,7 @@ statistics_output_neurons=[
 # 2,
 # 4,
 8,
-12,
+#12,
 # 20,
 ]
 
@@ -45,19 +45,22 @@ VAE_beta=[
 ]
 
 lr=[
+5e-4,
+2e-4,
+1e-4,
 5e-5,
 # 2e-5,
 ]
 
 pre_pooling_neurons=[
-200,
+#200,
 400,
 # 600,
 ]
 
 num_context_neurons=[
 0,
-4,
+#4,
 # 8,
 ]
 
@@ -67,24 +70,24 @@ statistics_pooling=[
 ]
 
 struct_param_pre_neurons=[
-'\(60,3\)',
+'\(150,3\)',
 '\(100,3\)',
 ]
 
 struct_param_gen_base_neurons=[
 '\(60,3\)',
-'\(100,3\)',
+#'\(100,3\)',
 ]
 
 main_hidden_neurons=[
-'\(40,40\)',
+#'\(40,40\)',
 '\(40,40,40\)',
 # '(80,80)',
-'\(80,80,80\)',
+'\(40,80,40\)',
 ]
 
 reg_amp=[
-2e-9,
+#2e-9,
 1e-8,
 # 0,
 ]
@@ -111,13 +114,19 @@ False,
 
 loss_core=[
 "huber",
-# "mse",
+"mse",
 ]
 
 patience=[
-# 200,
+200,
 300,
 ]
+
+forward_steps=[
+'\(1\)',
+#'\(1,2\)',
+]
+
 
 def assign_array_id(array_id, param_list):
     if len(param_list) == 0:
@@ -151,6 +160,7 @@ param_list = [exp_id,
             is_uncertainty_net,
             loss_core,
             patience,
+            forward_steps,
 ]
 param_chosen = assign_array_id(array_id, param_list)
 exec_str = "python ../variational/Experiments/variational_meta_learning_standard.py"

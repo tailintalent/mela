@@ -1,7 +1,7 @@
 import os, sys
 
 exp_id=[
-"syn1.02",
+"syn1.04",
 ]
 
 exp_mode = [
@@ -35,7 +35,7 @@ statistics_output_neurons=[
 ]
 
 is_VAE=[
-True,
+#True,
 False,
 ]
 
@@ -46,21 +46,22 @@ VAE_beta=[
 ]
 
 lr=[
+5e-4,
 2e-4,
 1e-4,
-5e-5,
+#5e-5,
 #2e-5,
 ]
 
 pre_pooling_neurons=[
 200,
-#300,
+400,
 # 600,
 ]
 
 num_context_neurons=[
 0,
-4,
+#4,
 # 8,
 ]
 
@@ -70,15 +71,16 @@ statistics_pooling=[
 ]
 
 struct_param_pre_neurons=[
+'\(120,3\)',
 '\(60,3\)',
 #'\(60,2\)',
 ]
 
 struct_param_gen_base_neurons=[
-#'\(60,3\)',
-'\(30,2\)',
+'\(60,3\)',
+#'\(30,2\)',
 '\(60,2\)',
-'\(120,2\)',
+#'\(120,2\)',
 ]
 
 main_hidden_neurons=[
@@ -121,7 +123,12 @@ loss_core=[
 
 patience=[
 200,
-300,
+400,
+]
+
+forward_steps=[
+'\(1\)',
+#'\(1,2\)',
 ]
 
 def assign_array_id(array_id, param_list):
@@ -156,6 +163,7 @@ param_list = [exp_id,
             is_uncertainty_net,
             loss_core,
             patience,
+            forward_steps,
 ]
 param_chosen = assign_array_id(array_id, param_list)
 exec_str = "python ../variational/Experiments/variational_meta_learning_standard.py"
