@@ -59,13 +59,13 @@ task_id_list = [
 # "M-Gaussian",
 # "M-tanh",
 # "M-softplus",
-# "C-sin",
+"C-sin",
 # "C-tanh",
-"bounce-states",
+# "bounce-states",
 # "bounce-images",
 ]
 
-exp_id = "C-May13"
+exp_id = "C-May15"
 exp_mode = "meta"
 # exp_mode = "finetune"
 # exp_mode = "oracle"
@@ -381,8 +381,8 @@ for i in range(num_iter + 1):
             plot_data_record(data_record, is_VAE = is_VAE)
 
         # Plotting y_pred vs. y_target:
-        statistics_list_train, z_list_train = plot_task_ensembles(tasks_train, master_model = master_model, model = model, is_VAE = is_VAE, is_uncertainty_net = is_uncertainty_net, is_regulated_net = is_regulated_net, title = "y_pred_train vs. y_train", isplot = isplot)
-        statistics_list_test, z_list_test = plot_task_ensembles(tasks_test, master_model = master_model, model = model, is_VAE = is_VAE, is_uncertainty_net = is_uncertainty_net, is_regulated_net = is_regulated_net, title = "y_pred_test vs. y_test", isplot = isplot)
+        statistics_list_train, z_list_train = plot_task_ensembles(tasks_train, master_model = master_model, model = model, is_time_series = is_time_series, is_VAE = is_VAE, is_uncertainty_net = is_uncertainty_net, is_regulated_net = is_regulated_net, title = "y_pred_train vs. y_train", isplot = isplot)
+        statistics_list_test, z_list_test = plot_task_ensembles(tasks_test, master_model = master_model, model = model, is_time_series = is_time_series, is_VAE = is_VAE, is_uncertainty_net = is_uncertainty_net, is_regulated_net = is_regulated_net, title = "y_pred_test vs. y_test", isplot = isplot)
         record_data(data_record, [np.array(z_list_train), np.array(z_list_test), np.array(statistics_list_train), np.array(statistics_list_test)], 
                     ["z_list_train_list", "z_list_test_list", "statistics_list_train_list", "statistics_list_test_list"])
         if isplot:
@@ -396,9 +396,9 @@ for i in range(num_iter + 1):
                 plot_individual_tasks_bounce(tasks_test, num_examples_show = 40, num_tasks_show = 6, master_model = master_model, model = model, num_shots = 200, valid_input_dims = input_size - z_size, target_forward_steps = len(forward_steps), eval_forward_steps = len(forward_steps))
             else:
                 print("train tasks:")
-                plot_individual_tasks(tasks_train, master_model = master_model, model = model, is_VAE = is_VAE, is_uncertainty_net = is_uncertainty_net, is_regulated_net = is_regulated_net, is_oracle = is_oracle, xlim = task_settings["xlim"])
+                plot_individual_tasks(tasks_train, master_model = master_model, model = model, is_time_series = is_time_series, is_VAE = is_VAE, is_uncertainty_net = is_uncertainty_net, is_regulated_net = is_regulated_net, is_oracle = is_oracle, xlim = task_settings["xlim"])
                 print("test tasks:")
-                plot_individual_tasks(tasks_test, master_model = master_model, model = model, is_VAE = is_VAE, is_uncertainty_net = is_uncertainty_net, is_regulated_net = is_regulated_net, is_oracle = is_oracle, xlim = task_settings["xlim"])
+                plot_individual_tasks(tasks_test, master_model = master_model, model = model, is_time_series = is_time_series, is_VAE = is_VAE, is_uncertainty_net = is_uncertainty_net, is_regulated_net = is_regulated_net, is_oracle = is_oracle, xlim = task_settings["xlim"])
         print("=" * 50 + "\n\n")
         try:
             sys.stdout.flush()

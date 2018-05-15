@@ -946,7 +946,7 @@ def load_trained_models(filename):
     return statistics_Net, generative_Net, data_record
 
 
-def plot_task_ensembles(tasks, master_model = None, model = None, is_VAE = False, is_uncertainty_net = False, is_regulated_net = False, autoencoder = None, title = None, isplot = True, **kwargs):
+def plot_task_ensembles(tasks, master_model = None, model = None, is_time_series = True, is_VAE = False, is_uncertainty_net = False, is_regulated_net = False, autoencoder = None, title = None, isplot = True, **kwargs):
     import matplotlib.pyplot as plt
     statistics_list = []
     z_list = []
@@ -965,7 +965,7 @@ def plot_task_ensembles(tasks, master_model = None, model = None, is_VAE = False
             ((X_train, y_train), (X_test, y_test)), info = task
             
         if master_model is not None:
-            results = master_model.get_predictions(X_test = X_test, X_train = X_train, y_train = y_train, 
+            results = master_model.get_predictions(X_test = X_test, X_train = X_train, y_train = y_train, is_time_series = is_time_series,
                                                   is_VAE = is_VAE, is_uncertainty_net = is_uncertainty_net, is_regulated_net = is_regulated_net)
             statistics_list.append(to_np_array(results["statistics"])[0])
         else:
@@ -984,7 +984,7 @@ def plot_task_ensembles(tasks, master_model = None, model = None, is_VAE = False
     return np.array(statistics_list), np.array(z_list)
 
 
-def plot_individual_tasks(tasks, master_model = None, model = None, max_plots = 24, 
+def plot_individual_tasks(tasks, master_model = None, model = None, max_plots = 24, is_time_series = True,
                           is_VAE = False, is_uncertainty_net = False, is_regulated_net = False, xlim = (-4, 4), sample_times = None, is_oracle = False):
     import matplotlib.pyplot as plt
     num_columns = 8
@@ -1014,7 +1014,7 @@ def plot_individual_tasks(tasks, master_model = None, model = None, max_plots = 
         chosen_dim = np.random.choice(range(input_size))
         
         if master_model is not None:
-            results = master_model.get_predictions(X_test = X_linspace, X_train = X_train, y_train = y_train, 
+            results = master_model.get_predictions(X_test = X_linspace, X_train = X_train, y_train = y_train, is_time_series = is_time_series, 
                                                   is_VAE = is_VAE, is_uncertainty_net = is_uncertainty_net, is_regulated_net = is_regulated_net)
             statistics_list.append(to_np_array(results["statistics"]))
         else:
