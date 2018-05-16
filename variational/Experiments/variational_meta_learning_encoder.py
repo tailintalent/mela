@@ -326,7 +326,7 @@ def train_epoch_joint(motion_train_loader, X_motion_test, y_motion_test, conv_en
 
 # ## Setting up:
 
-# In[ ]:
+# In[8]:
 
 
 task_id_list = [
@@ -344,7 +344,7 @@ task_id_list = [
 "bounce-images",
 ]
 
-exp_id = "C-May13"
+exp_id = "C-May16"
 exp_mode = "meta"
 # exp_mode = "finetune"
 # exp_mode = "oracle"
@@ -387,22 +387,22 @@ else:
 is_autoencoder = True
 max_forward_steps = 10
 
-lr = 5e-5
+lr = 1e-4
 num_train_tasks = 100
 num_test_tasks = 100
 batch_size_task = num_train_tasks
-num_iter = 10000
+num_iter = 20000
 pre_pooling_neurons = 200
 num_context_neurons = 0
 statistics_pooling = "max"
-struct_param_pre_neurons = (60,3)
+struct_param_pre_neurons = (100,3)
 struct_param_gen_base_neurons = (60,3)
-main_hidden_neurons = (40, 40)
+main_hidden_neurons = (40, 40, 40)
 activation_gen = "leakyRelu"
 activation_model = "leakyRelu"
 optim_mode = "indi"
 loss_core = "mse"
-patience = 300
+patience = 500
 array_id = 0
 
 exp_id = get_args(exp_id, 1)
@@ -435,7 +435,7 @@ task_settings = {
 }
 isParallel = False
 inspect_interval = 5
-save_interval = 100
+save_interval = 500
 num_backwards = 1
 is_oracle = (exp_mode == "oracle")
 if is_oracle:
@@ -807,10 +807,11 @@ for i in range(num_iter + 1):
         except:
             pass
     if i % save_interval == 0 or to_stop:
-        model_save = master_model if master_model is not None else model
-        record_data(info_dict, [model_save.model_dict], ["model_dict"])
+        pickle.dump(info_dict, open(filename + "info.p", "wb"))
         make_dir(filename[:-1] + "/conv-meta_master-model")
+        model_save = master_model if master_model is not None else model
         torch.save(autoencoder.state_dict(), filename[:-1] + "/conv-meta_autoencoder_{0}.p".format(i))
+        torch.save(model_save.state_dict(), filename[:-1] + "/conv-meta_model_{0}.p".format(i))
     if to_stop:
         print("The training loss stops decreasing for {0} steps. Early stopping at {1}.".format(patience, i))
         break
