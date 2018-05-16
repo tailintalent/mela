@@ -47,7 +47,7 @@ is_cuda = torch.cuda.is_available()
 
 # ## Training:
 
-# In[4]:
+# In[2]:
 
 
 task_id_list = [
@@ -59,9 +59,9 @@ task_id_list = [
 # "M-Gaussian",
 # "M-tanh",
 # "M-softplus",
-"C-sin",
+# "C-sin",
 # "C-tanh",
-# "bounce-states",
+"bounce-states",
 # "bounce-images",
 ]
 
@@ -85,7 +85,7 @@ if task_id_list[0] in ["C-sin", "C-tanh"]:
     reg_amp = 1e-6
     forward_steps = [1]
     is_time_series = False
-elif task_id_list[0] == "bounce-states":
+elif task_id_list[0] in ["bounce-states", "bounce-states2"]:
     statistics_output_neurons = 8
     num_shots = 100
     z_size = 8
