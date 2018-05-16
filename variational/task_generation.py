@@ -40,8 +40,8 @@ from AI_scientist.variational.variational_meta_learning import get_latent_model_
 
 # task_id = "C-tanh"
 # task_id = "C-sin"
-# task_id = "bounce-states"
-task_id = "bounce-images"
+task_id = "bounce-states"
+# task_id = "bounce-images"
 seed = 1
 
 np.random.seed(seed)
@@ -90,18 +90,6 @@ tasks = pickle.load(open(filename, "rb"))
 
 tasks_train = tasks["tasks_train"]
 tasks_test = tasks["tasks_test"]
-
-
-# In[9]:
-
-
-len(tasks_train)
-
-
-# In[10]:
-
-
-len(tasks_test)
 
 
 # In[ ]:
