@@ -355,7 +355,7 @@ task_id_list = [
 "bounce-images",
 ]
 
-exp_id = "C-May16"
+exp_id = "C-May18"
 exp_mode = "meta"
 # exp_mode = "finetune"
 # exp_mode = "oracle"
@@ -445,7 +445,7 @@ task_settings = {
     "test_size": 0.5,
 }
 isParallel = False
-inspect_interval = 5
+inspect_interval = 10
 save_interval = 50
 num_backwards = 1
 is_oracle = (exp_mode == "oracle")
@@ -794,14 +794,14 @@ for i in range(num_iter + 1):
                      "mse_few_shot",
                     ])
         if isplot:
-            plot_data_record(data_record, idx = -1, is_VAE = is_VAE)
+            plot_data_record(data_record, idx = -1, is_VAE = is_VAE, tasks_train_keys = tasks_train.keys(), tasks_test_keys = tasks_test.keys())
         print("Summary:")
         print('\n{0}\ttrain\tloss_mean: {1:.5f}\tloss_median: {2:.5f}\tmse_mean: {3:.6f}\tmse_median: {4:.6f}\treg: {5:.6f}'.format(i, data_record["loss_mean_train"][-1], data_record["loss_median_train"][-1], data_record["mse_mean_train"][-1], data_record["mse_median_train"][-1], data_record["reg_mean_train"][-1]))
         print('{0}\ttest\tloss_mean: {1:.5f}\tloss_median: {2:.5f}\tmse_mean: {3:.6f}\tmse_median: {4:.6f}\treg: {5:.6f}'.format(i, data_record["loss_mean_test"][-1], data_record["loss_median_test"][-1], data_record["mse_mean_test"][-1], data_record["mse_median_test"][-1], data_record["reg_mean_test"][-1]))
         if is_VAE and "KLD_total" in locals():
             print("KLD_total: {0:.5f}".format(KLD_total.data[0]))
         if isplot:
-            plot_data_record(data_record, is_VAE = is_VAE)
+            plot_data_record(data_record, is_VAE = is_VAE, tasks_train_keys = tasks_train.keys(), tasks_test_keys = tasks_test.keys())
 
         # Plotting y_pred vs. y_target:
         statistics_list_train, z_list_train = plot_task_ensembles(tasks_train, master_model = master_model, model = model, is_VAE = is_VAE, is_oracle = is_oracle, is_regulated_net = is_regulated_net, autoencoder = autoencoder, title = "y_pred_train vs. y_train", isplot = isplot, forward_steps = forward_steps, )

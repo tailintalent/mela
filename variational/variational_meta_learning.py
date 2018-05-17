@@ -1359,7 +1359,7 @@ def plot_statistics_vs_z(z_list, statistics_list, mode = "corrcoef", title = Non
     return info
 
 
-def plot_data_record(data_record, idx = None, is_VAE = False):
+def plot_data_record(data_record, idx = None, is_VAE = False, tasks_train_keys = None, tasks_test_keys = None):
     import matplotlib.pyplot as plt
     source = ["loss", "loss_sampled", "mse"] if is_VAE else ["loss", "mse"]
     fig = plt.figure(figsize = (len(source) * 8, 6))
@@ -1377,8 +1377,12 @@ def plot_data_record(data_record, idx = None, is_VAE = False):
                 ax.set_ylabel(key)
                 ax.set_title("{0} vs. training step".format(key))
             else:
-                loss_train_list = [data_record[key][task_key][idx] for task_key in data_record["tasks_train"][0].keys()]
-                loss_test_list = [data_record[key][task_key][-1] for task_key in data_record["tasks_test"][0].keys()]
+                if "tasks_train" in data_record:
+                    loss_train_list = [data_record[key][task_key][idx] for task_key in data_record["tasks_train"][0].keys()]
+                    loss_test_list = [data_record[key][task_key][-1] for task_key in data_record["tasks_test"][0].keys()]
+                else:
+                    loss_train_list = [data_record[key][task_key][idx] for task_key in tasks_train_keys]
+                    loss_test_list = [data_record[key][task_key][-1] for task_key in tasks_test_keys]
                 ax.hist(loss_train_list, bins = 20, density = True, alpha = 0.3, color="b")
                 ax.hist(loss_test_list, bins = 20, density = True, alpha = 0.3, color="r")
                 ax.axvline(x= np.mean(loss_train_list), c = "b", alpha = 0.6, label = "train_mean")
