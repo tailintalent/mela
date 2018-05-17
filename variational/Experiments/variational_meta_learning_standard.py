@@ -47,7 +47,7 @@ is_cuda = torch.cuda.is_available()
 
 # ## Training:
 
-# In[2]:
+# In[4]:
 
 
 task_id_list = [
@@ -65,7 +65,7 @@ task_id_list = [
 # "bounce-images",
 ]
 
-exp_id = "C-May15"
+exp_id = "C-May16"
 exp_mode = "meta"
 # exp_mode = "finetune"
 # exp_mode = "oracle"
@@ -151,6 +151,9 @@ num_backwards = 1
 is_oracle = (exp_mode == "oracle")
 if is_oracle:
     input_size += z_size
+    oracle_size = z_size
+else:
+    oracle_size = None
 print("exp_mode: {0}".format(exp_mode))
 
 # Obtain tasks:
@@ -266,7 +269,7 @@ for i in range(num_iter + 1):
                                                           is_VAE = is_VAE, is_uncertainty_net = is_uncertainty_net, is_regulated_net = is_regulated_net, forward_steps = forward_steps)
                 else:
                     results = {}
-                    results["y_pred"] = get_forward_pred(model, X_test, forward_steps, is_time_series = is_time_series, jump_step = 2, is_flatten = True)
+                    results["y_pred"] = get_forward_pred(model, X_test, forward_steps, is_time_series = is_time_series, jump_step = 2, is_flatten = True, oracle_size = oracle_size)
                 if is_VAE:
                     loss, KLD = criterion(results["y_pred"], y_test, mu = results["statistics_mu"], logvar = results["statistics_logvar"])
                     KLD_total = KLD_total + KLD
@@ -300,7 +303,7 @@ for i in range(num_iter + 1):
                                                       is_VAE = is_VAE, is_uncertainty_net = is_uncertainty_net, is_regulated_net = is_regulated_net, forward_steps = forward_steps)
             else:
                 results = {}
-                results["y_pred"] = get_forward_pred(model, X_test, forward_steps, is_time_series = is_time_series, jump_step = 2, is_flatten = True)
+                results["y_pred"] = get_forward_pred(model, X_test, forward_steps, is_time_series = is_time_series, jump_step = 2, is_flatten = True, oracle_size = oracle_size)
             if is_VAE:
                 loss, KLD = criterion(results["y_pred"], y_test, mu = results["statistics_mu"], logvar = results["statistics_logvar"])
                 loss = loss + KLD

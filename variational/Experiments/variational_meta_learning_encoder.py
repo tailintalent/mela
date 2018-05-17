@@ -663,7 +663,7 @@ for i in range(num_iter + 1):
                                                            is_VAE = is_VAE, is_uncertainty_net = is_uncertainty_net, is_regulated_net = is_regulated_net, forward_steps = forward_steps)
                 else:
                     results = {}
-                    results["y_pred"] = get_forward_pred(model, X_test, forward_steps, is_time_series = is_time_series, jump_step = 2, is_flatten = True)
+                    results["y_pred"] = get_forward_pred(model, X_test, forward_steps, is_time_series = is_time_series, jump_step = 2, is_flatten = True, oracle_size = oracle_size)
                 if is_VAE:
                     statistics_mu, statistics_logvar = statistics_Net(torch.cat([X_train, y_train], 1))
                     statistics = sample_Gaussian(statistics_mu, statistics_logvar)
@@ -715,7 +715,7 @@ for i in range(num_iter + 1):
                                                        is_VAE = is_VAE, is_uncertainty_net = is_uncertainty_net, is_regulated_net = is_regulated_net, forward_steps = forward_steps)
             else:
                 results = {}
-                results["y_pred"] = get_forward_pred(model, X_test, forward_steps, is_time_series = is_time_series, jump_step = 2, is_flatten = True)
+                results["y_pred"] = get_forward_pred(model, X_test, forward_steps, is_time_series = is_time_series, jump_step = 2, is_flatten = True, oracle_size = oracle_size)
             if is_VAE:
                 statistics_mu, statistics_logvar = statistics_Net(torch.cat([X_train, y_train], 1))
                 statistics = sample_Gaussian(statistics_mu, statistics_logvar)

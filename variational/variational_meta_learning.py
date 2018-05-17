@@ -574,7 +574,7 @@ def forward(model, X):
     return output_seq
 
 
-def get_forward_pred(predictor, latent, forward_steps, latent_param = None, is_time_series = True, jump_step = 2, is_flatten = False):
+def get_forward_pred(predictor, latent, forward_steps, latent_param = None, is_time_series = True, jump_step = 2, is_flatten = False, oracle_size = None):
     """Applying the same model to roll out several time steps"""
     if not is_time_series:
         if latent_param is None:
@@ -591,7 +591,10 @@ def get_forward_pred(predictor, latent, forward_steps, latent_param = None, is_t
             else:
                 current_pred = predictor(current_latent, latent_param)
             pred_list.append(current_pred)
-            current_latent = torch.cat([current_latent[:,jump_step:], current_pred], 1)
+            if oracle_size is None:
+                current_latent = torch.cat([current_latent[:,jump_step:], current_pred], 1)
+            else:
+                current_latent = torch.cat([current_latent[:,jump_step:-oracle_size], current_pred, current_latent[:,-oracle_size:]], 1)
         pred_list = torch.cat(pred_list, 1)
         pred_list = pred_list.view(pred_list.size(0), -1, 2)
         forward_steps_idx = torch.LongTensor(np.array(forward_steps) - 1)
@@ -1091,7 +1094,7 @@ def plot_individual_tasks_bounce(
     valid_input_dims = None,
     target_forward_steps = 1,
     eval_forward_steps = 1,
-    kwargs = {},
+    **kwargs
     ):
     import matplotlib.pylab as plt
     fig = plt.figure(figsize = (25, num_tasks_show / 3 * 8))
