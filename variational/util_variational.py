@@ -406,7 +406,7 @@ def get_torch_tasks(
                 y_train = y_train.contiguous().view(y_train.size(0), -1)
                 X_test = X_test.contiguous().view(X_test.size(0), -1)
                 y_test = y_test.contiguous().view(y_test.size(0), -1)
-        if is_oracle:
+        if is_oracle and len(X_train.size()) != 4:
             z_train = Variable(torch.FloatTensor(np.repeat(np.expand_dims(z_info["z"],0) * SCALE_FACTOR, len(X_train), 0)), requires_grad = False)
             z_test = Variable(torch.FloatTensor(np.repeat(np.expand_dims(z_info["z"],0) * SCALE_FACTOR, len(X_test), 0)), requires_grad = False)
             X_train = torch.cat([X_train, z_train], 1)

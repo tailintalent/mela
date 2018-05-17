@@ -646,7 +646,9 @@ class Loss_with_autoencoder(nn.Module):
         if self.is_cuda:
             self.forward_steps_idx = self.forward_steps_idx.cuda()
     
-    def forward(self, X_latent, y_latent_pred, X_train_obs, y_train_obs, autoencoder, loss_fun = None, verbose = False):
+    def forward(self, X_latent, y_latent_pred, X_train_obs, y_train_obs, autoencoder, loss_fun = None, verbose = False, oracle_size = None):
+        if oracle_size is not None:
+            X_latent = X_latent[:, : -oracle_size].contiguous()
         X_latent = X_latent.view(X_latent.size(0), -1, 2)
         recons = forward(autoencoder.decode, X_latent)
         pred_recons = forward(autoencoder.decode, y_latent_pred.view(y_latent_pred.size(0), -1, 2))
@@ -847,16 +849,24 @@ def get_tasks(task_id_list, num_train, num_test, task_settings = {}, is_cuda = F
     return tasks_train, tasks_test
 
 
-def evaluate(task, master_model = None, model = None, criterion = None, is_time_series = True, is_VAE = False, is_regulated_net = False, autoencoder = None, forward_steps = [1], **kwargs):
+def evaluate(task, master_model = None, model = None, criterion = None, is_time_series = True, oracle_size = None, is_VAE = False, is_regulated_net = False, autoencoder = None, forward_steps = [1], **kwargs):
     if autoencoder is not None:
         forward_steps_idx = torch.LongTensor(np.array(forward_steps) - 1)    
-        ((X_train_obs, y_train_obs), (X_test_obs, y_test_obs)), _ = task
+        ((X_train_obs, y_train_obs), (X_test_obs, y_test_obs)), z_info = task
         if X_train_obs.is_cuda:
             forward_steps_idx = forward_steps_idx.cuda()   
         X_train = forward(autoencoder.encode, X_train_obs)
         y_train = forward(autoencoder.encode, y_train_obs[:, forward_steps_idx])
         X_test = forward(autoencoder.encode, X_test_obs)
         y_test = forward(autoencoder.encode, y_test_obs[:, forward_steps_idx])
+        if oracle_size is not None:
+            z_train = Variable(torch.FloatTensor(np.repeat(np.expand_dims(z_info["z"],0), len(X_train), 0)), requires_grad = False)
+            z_test = Variable(torch.FloatTensor(np.repeat(np.expand_dims(z_info["z"],0), len(X_test), 0)), requires_grad = False)
+            if X_train.is_cuda:
+                z_train = z_train.cuda()
+                z_test = z_test.cuda()
+            X_train = torch.cat([X_train, z_train], 1)
+            X_test = torch.cat([X_test, z_test], 1)
     else:
         ((X_train, y_train), (X_test, y_test)), _ = task
 
@@ -900,8 +910,8 @@ def evaluate(task, master_model = None, model = None, criterion = None, is_time_
     else:
         if autoencoder is not None:
             y_pred = get_forward_pred(model, X_test, forward_steps, is_time_series = is_time_series)
-            loss = loss_sampled = loss_test_sampled = criterion(X_test, y_pred, X_test_obs, y_test_obs, autoencoder)
-            mse = criterion(X_test, y_pred, X_test_obs, y_test_obs, autoencoder, loss_fun = loss_fun, verbose = True)
+            loss = loss_sampled = loss_test_sampled = criterion(X_test, y_pred, X_test_obs, y_test_obs, autoencoder, oracle_size = oracle_size)
+            mse = criterion(X_test, y_pred, X_test_obs, y_test_obs, autoencoder, loss_fun = loss_fun, verbose = True, oracle_size = oracle_size)
         else:
             y_pred = get_forward_pred(model, X_test, forward_steps, is_time_series = is_time_series)
             loss = loss_sampled = criterion(y_pred, y_test)
@@ -946,7 +956,7 @@ def load_trained_models(filename):
     return statistics_Net, generative_Net, data_record
 
 
-def plot_task_ensembles(tasks, master_model = None, model = None, is_time_series = True, is_VAE = False, is_uncertainty_net = False, is_regulated_net = False, autoencoder = None, title = None, isplot = True, **kwargs):
+def plot_task_ensembles(tasks, master_model = None, model = None, is_time_series = True, is_oracle = False, is_VAE = False, is_uncertainty_net = False, is_regulated_net = False, autoencoder = None, title = None, isplot = True, **kwargs):
     import matplotlib.pyplot as plt
     statistics_list = []
     z_list = []
@@ -961,6 +971,14 @@ def plot_task_ensembles(tasks, master_model = None, model = None, is_time_series
             y_train = forward(autoencoder.encode, y_train_obs[:, forward_steps_idx])
             X_test = forward(autoencoder.encode, X_test_obs)
             y_test = forward(autoencoder.encode, y_test_obs[:, forward_steps_idx])
+            if is_oracle:
+                z_train = Variable(torch.FloatTensor(np.repeat(np.expand_dims(info["z"],0), len(X_train), 0)), requires_grad = False)
+                z_test = Variable(torch.FloatTensor(np.repeat(np.expand_dims(info["z"],0), len(X_test), 0)), requires_grad = False)
+                if X_train.is_cuda:
+                    z_train = z_train.cuda()
+                    z_test = z_test.cuda()
+                X_train = torch.cat([X_train, z_train], 1)
+                X_test = torch.cat([X_test, z_test], 1)
         else:
             ((X_train, y_train), (X_test, y_test)), info = task
             

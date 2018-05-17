@@ -98,15 +98,23 @@ def plot_encoding(X, autoencoder, target = "encoding"):
         plt.show()
 
 
-def plot_tasks(tasks, master_model = None, model = None, autoencoder = None, forward_steps = None, num_tasks = 3):
+def plot_tasks(tasks, master_model = None, model = None, autoencoder = None, forward_steps = None, num_tasks = 3, oracle_size = None):
     task_keys = np.random.choice(list(tasks.keys()), num_tasks, replace = False)
     for i, task_key in enumerate(task_keys):
         task = tasks[task_key]
-        ((X_train_obs, y_train_obs), (X_test_obs, y_test_obs)), _ = task
+        ((X_train_obs, y_train_obs), (X_test_obs, y_test_obs)), z_info = task
         X_train = forward(autoencoder.encode, X_train_obs)
         y_train = forward(autoencoder.encode, y_train_obs[:, forward_steps_idx])
         X_test = forward(autoencoder.encode, X_test_obs)
         y_test = forward(autoencoder.encode, y_test_obs[:, forward_steps_idx])
+        if oracle_size is not None:
+            z_train = Variable(torch.FloatTensor(np.repeat(np.expand_dims(z_info["z"],0), len(X_train), 0)), requires_grad = False)
+            z_test = Variable(torch.FloatTensor(np.repeat(np.expand_dims(z_info["z"],0), len(X_test), 0)), requires_grad = False)
+            if X_train.is_cuda:
+                z_train = z_train.cuda()
+                z_test = z_test.cuda()
+            X_train = torch.cat([X_train, z_train], 1)
+            X_test = torch.cat([X_test, z_test], 1)  
         
         # Plotting:
         print("Task {0}:".format(task_key))
@@ -117,7 +125,10 @@ def plot_tasks(tasks, master_model = None, model = None, autoencoder = None, for
         else:
             latent_pred = get_forward_pred(model, X_test, forward_steps, is_time_series = True, jump_step = 2, is_flatten = False)
         pred_recons = forward(autoencoder.decode, latent_pred)
-        plot_matrices(np.concatenate((to_np_array(forward(autoencoder.decode, X_test.view(X_test.size(0), -1, 2))[0]), to_np_array(pred_recons[0]))))  
+        if oracle_size is None:
+            plot_matrices(np.concatenate((to_np_array(forward(autoencoder.decode, X_test.view(X_test.size(0), -1, 2))[0]), to_np_array(pred_recons[0]))))  
+        else:
+            plot_matrices(np.concatenate((to_np_array(forward(autoencoder.decode, X_test[:, :-oracle_size].contiguous().view(X_test.size(0), -1, 2))[0]), to_np_array(pred_recons[0]))))  
 
 
 class Conv_Autoencoder(nn.Module):
@@ -326,7 +337,7 @@ def train_epoch_joint(motion_train_loader, X_motion_test, y_motion_test, conv_en
 
 # ## Setting up:
 
-# In[ ]:
+# In[3]:
 
 
 task_id_list = [
@@ -440,6 +451,9 @@ num_backwards = 1
 is_oracle = (exp_mode == "oracle")
 if is_oracle:
     input_size += z_size
+    oracle_size = z_size
+else:
+    oracle_size = None
 print("exp_mode: {0}".format(exp_mode))
 
 # Obtain tasks:
@@ -626,13 +640,22 @@ for i in range(num_iter + 1):
             if task_key not in chosen_task_keys:
                 continue
             if is_autoencoder:
-                ((X_train_obs, y_train_obs), (X_test_obs, y_test_obs)), _ = task
+                ((X_train_obs, y_train_obs), (X_test_obs, y_test_obs)), z_info = task
                 X_train = forward(autoencoder.encode, X_train_obs)
                 y_train = forward(autoencoder.encode, y_train_obs[:, forward_steps_idx])
                 X_test = forward(autoencoder.encode, X_test_obs)
                 y_test = forward(autoencoder.encode, y_test_obs[:, forward_steps_idx])
+                if is_oracle:
+                    z_train = Variable(torch.FloatTensor(np.repeat(np.expand_dims(z_info["z"],0), len(X_train), 0)), requires_grad = False)
+                    z_test = Variable(torch.FloatTensor(np.repeat(np.expand_dims(z_info["z"],0), len(X_test), 0)), requires_grad = False)
+                    if is_cuda:
+                        z_train = z_train.cuda()
+                        z_test = z_test.cuda()
+                    X_train = torch.cat([X_train, z_train], 1)
+                    X_test = torch.cat([X_test, z_test], 1)
             else:
-                ((X_train, y_train), (X_test, y_test)), _ = task
+                ((X_train, y_train), (X_test, y_test)), z_info = task
+            
             for k in range(num_backwards):
                 optimizer.zero_grad()
                 if master_model is not None:
@@ -657,7 +680,7 @@ for i in range(num_iter + 1):
                         loss = criterion(y_pred, y_test, log_std = y_pred_logstd)
                     else:
                         if is_autoencoder:
-                            loss = criterion(X_test, results["y_pred"], X_test_obs, y_test_obs, autoencoder, verbose = False)
+                            loss = criterion(X_test, results["y_pred"], X_test_obs, y_test_obs, autoencoder, verbose = False, oracle_size = oracle_size)
                         else:
                             loss = criterion(results["y_pred"], y_test)
                 reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, net = model, autoencoder = autoencoder, is_cuda = is_cuda)
@@ -707,7 +730,7 @@ for i in range(num_iter + 1):
                     loss = criterion(y_pred, y_test, log_std = y_pred_logstd)
                 else:
                     if is_autoencoder:
-                        loss = criterion(X_test, results["y_pred"], X_test_obs, y_test_obs, autoencoder, verbose = False)
+                        loss = criterion(X_test, results["y_pred"], X_test_obs, y_test_obs, autoencoder, verbose = False, oracle_size = oracle_size)
                     else:
                         loss = criterion(results["y_pred"], y_test)
             reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, autoencoder = autoencoder, net = model, is_cuda = is_cuda)
@@ -719,7 +742,7 @@ for i in range(num_iter + 1):
 
     loss_test_record = []
     for task_key, task in tasks_test.items():
-        loss_test, _, _, _ = evaluate(task, master_model = master_model, model = model, criterion = criterion, is_VAE = is_VAE, is_regulated_net = is_regulated_net, autoencoder = autoencoder, forward_steps = forward_steps)
+        loss_test, _, _, _ = evaluate(task, master_model = master_model, model = model, criterion = criterion, oracle_size = oracle_size, is_VAE = is_VAE, is_regulated_net = is_regulated_net, autoencoder = autoencoder, forward_steps = forward_steps)
         loss_test_record.append(loss_test)
     to_stop = early_stopping.monitor(np.mean(loss_test_record))
 
@@ -728,7 +751,7 @@ for i in range(num_iter + 1):
         print("=" * 50)
         print("training tasks:")
         for task_key, task in tasks_train.items():
-            loss_test, loss_test_sampled, mse, KLD_test = evaluate(task, master_model = master_model, model = model, criterion = criterion, is_VAE = is_VAE, is_regulated_net = is_regulated_net, autoencoder = autoencoder, forward_steps = forward_steps)
+            loss_test, loss_test_sampled, mse, KLD_test = evaluate(task, master_model = master_model, model = model, criterion = criterion,  oracle_size = oracle_size, is_VAE = is_VAE, is_regulated_net = is_regulated_net, autoencoder = autoencoder, forward_steps = forward_steps)
             reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, autoencoder = autoencoder, net = model, is_cuda = is_cuda).data[0] * reg_multiplier[i]
             data_record["loss"][task_key].append(loss_test)
             data_record["loss_sampled"][task_key].append(loss_test_sampled)
@@ -737,7 +760,7 @@ for i in range(num_iter + 1):
             data_record["KLD"][task_key].append(KLD_test)
             print('{0}\ttrain\t{1}  \tloss: {2:.5f}\tloss_sampled:{3:.5f} \tmse:{4:.5f}\tKLD:{5:.6f}\treg:{6:.6f}'.format(i, task_key, loss_test, loss_test_sampled, mse, KLD_test, reg))
         for task_key, task in tasks_test.items():
-            loss_test, loss_test_sampled, mse, KLD_test = evaluate(task, master_model = master_model, model = model, criterion = criterion, is_VAE = is_VAE, is_regulated_net = is_regulated_net, autoencoder = autoencoder, forward_steps = forward_steps)
+            loss_test, loss_test_sampled, mse, KLD_test = evaluate(task, master_model = master_model, model = model, criterion = criterion,  oracle_size = oracle_size, is_VAE = is_VAE, is_regulated_net = is_regulated_net, autoencoder = autoencoder, forward_steps = forward_steps)
             reg = get_reg(reg_dict, statistics_Net = statistics_Net, generative_Net = generative_Net, autoencoder = autoencoder, net = model, is_cuda = is_cuda).data[0] * reg_multiplier[i]
             data_record["loss"][task_key].append(loss_test)
             data_record["loss_sampled"][task_key].append(loss_test_sampled)
@@ -781,8 +804,8 @@ for i in range(num_iter + 1):
             plot_data_record(data_record, is_VAE = is_VAE)
 
         # Plotting y_pred vs. y_target:
-        statistics_list_train, z_list_train = plot_task_ensembles(tasks_train, master_model = master_model, model = model, is_VAE = is_VAE, is_regulated_net = is_regulated_net, autoencoder = autoencoder, title = "y_pred_train vs. y_train", isplot = isplot, forward_steps = forward_steps, )
-        statistics_list_test, z_list_test = plot_task_ensembles(tasks_test, master_model = master_model, model = model, is_VAE = is_VAE, is_regulated_net = is_regulated_net, autoencoder = autoencoder, title = "y_pred_test vs. y_test", isplot = isplot, forward_steps = forward_steps, )
+        statistics_list_train, z_list_train = plot_task_ensembles(tasks_train, master_model = master_model, model = model, is_VAE = is_VAE, is_oracle = is_oracle, is_regulated_net = is_regulated_net, autoencoder = autoencoder, title = "y_pred_train vs. y_train", isplot = isplot, forward_steps = forward_steps, )
+        statistics_list_test, z_list_test = plot_task_ensembles(tasks_test, master_model = master_model, model = model, is_VAE = is_VAE, is_oracle = is_oracle, is_regulated_net = is_regulated_net, autoencoder = autoencoder, title = "y_pred_test vs. y_test", isplot = isplot, forward_steps = forward_steps, )
         record_data(data_record, [np.array(z_list_train), np.array(z_list_test), np.array(statistics_list_train), np.array(statistics_list_test)], 
                     ["z_list_train_list", "z_list_test_list", "statistics_list_train_list", "statistics_list_test_list"])
         if isplot:
@@ -794,7 +817,7 @@ for i in range(num_iter + 1):
             # Plotting individual test data:
             if "bounce" in task_id_list[0]:
                 if "bounce-images" in task_id_list[0]:
-                    plot_tasks(tasks_test, master_model = master_model, model = model, autoencoder = autoencoder, forward_steps = forward_steps, num_tasks = min(3, num_test_tasks))
+                    plot_tasks(tasks_test, master_model = master_model, model = model, autoencoder = autoencoder, forward_steps = forward_steps, num_tasks = min(3, num_test_tasks), oracle_size=oracle_size)
                 plot_individual_tasks_bounce(tasks_test, num_examples_show = 40, num_tasks_show = 6, master_model = master_model, model = model, autoencoder = autoencoder, num_shots = 200, target_forward_steps = len(forward_steps), eval_forward_steps = len(forward_steps))
             else:
                 print("train tasks:")
