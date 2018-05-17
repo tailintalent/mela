@@ -326,7 +326,7 @@ def train_epoch_joint(motion_train_loader, X_motion_test, y_motion_test, conv_en
 
 # ## Setting up:
 
-# In[8]:
+# In[ ]:
 
 
 task_id_list = [
@@ -387,7 +387,7 @@ else:
 is_autoencoder = True
 max_forward_steps = 10
 
-lr = 1e-4
+lr = 2e-4
 num_train_tasks = 100
 num_test_tasks = 100
 batch_size_task = num_train_tasks
@@ -435,7 +435,7 @@ task_settings = {
 }
 isParallel = False
 inspect_interval = 5
-save_interval = 500
+save_interval = 50
 num_backwards = 1
 is_oracle = (exp_mode == "oracle")
 if is_oracle:
