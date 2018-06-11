@@ -137,12 +137,6 @@ class Net(nn.Module):
             layer = getattr(self, "layer_{0}".format(k))
             reg = reg + layer.get_regularization(mode = mode, source = source)
         return reg
-    
-    
-    def simplify(self, X, y, mode = "full", **kwargs):
-        new_net, loss_dict = simplify(self, X, y, mode = mode, **kwargs)
-        self.__dict__.update(new_net.__dict__)  # Replace the current whole instance with the simplified one
-        return loss_dict
 
 
     def reset_layer(self, layer_id, layer):
@@ -268,102 +262,6 @@ class Net(nn.Module):
                 print("bias {0}:".format(b_source))
                 plot_matrices(b_list)
         return W_list, b_list
-
-    
-    def get_significance(self, W_available_all = None, b_available_all = None, layer_ids = None, isplot = False):
-        if W_available_all is not None:
-            self.W_available_all = W_available_all
-        else:
-            self.W_available_all = []
-            for k in range(len(self.struct_param)):
-                layer = getattr(self, "layer_{0}".format(k))
-                if isinstance(layer, SuperNet_Layer):
-                    self.W_available_all += layer.W_available
-            self.W_available_all = sorted(list(set(self.W_available_all)))
-        
-        if b_available_all is not None:
-            self.b_available_all = b_available_all
-        else:
-            self.b_available_all = []
-            for k in range(len(self.struct_param)):
-                layer = getattr(self, "layer_{0}".format(k))
-                if isinstance(layer, SuperNet_Layer):
-                    self.b_available_all += layer.b_available
-            self.b_available_all = sorted(list(set(self.b_available_all)))
-
-        layer_ids = range(len(self.struct_param)) if layer_ids is None else layer_ids
-        W_sig_array = -np.ones((len(layer_ids), len(self.W_available_all)))
-        b_sig_array = -np.ones((len(layer_ids), len(self.b_available_all)))
-        i = 0
-        layer_ids_vis = []
-        for k in range(len(self.struct_param)):
-            if k in layer_ids:
-                layer = getattr(self, "layer_{0}".format(k))
-                if not isinstance(layer, SuperNet_Layer):
-                    continue
-                layer_ids_vis.append(str(k))
-                if self.is_cuda:
-                    W_sig = softmax(layer.W_sig.cpu().data.numpy())
-                    b_sig = softmax(layer.b_sig.cpu().data.numpy())
-                else:
-                    W_sig = softmax(layer.W_sig.data.numpy())
-                    b_sig = softmax(layer.b_sig.data.numpy())
-                for j, W_type in enumerate(self.W_available_all):
-                    try:
-                        W_idx = layer.W_available.index(W_type)
-                    except:
-                        W_idx = None
-                    W_sig_array[i, j] = W_sig[W_idx] if W_idx is not None else np.NaN
-                for j, b_type in enumerate(self.b_available_all):
-                    try:
-                        b_idx = layer.b_available.index(b_type)
-                    except:
-                        b_idx = None
-                    b_sig_array[i, j] = b_sig[b_idx] if b_idx is not None else np.NaN
-                i += 1
-        W_sig_array = W_sig_array[:len(layer_ids_vis)]
-        b_sig_array = b_sig_array[:len(layer_ids_vis)]
-        layer_ids_print = "layers " + ",".join(layer_ids_vis)
-        if isplot:
-            plot_matrices([W_sig_array, b_sig_array], x_axis_list = [layer_ids_print] * 2)
-        return (W_sig_array, b_sig_array), (self.W_available_all, self.b_available_all, layer_ids_vis)
-
-
-    def get_selectors(self, layer_ids = None, isplot = False):
-        selectors_list = []
-        axis_label_list = []
-        layer_ids = range(len(self.struct_param)) if layer_ids is None else layer_ids
-        for k in range(len(self.struct_param)):
-            if k in layer_ids:
-                layer = getattr(self, "layer_{0}".format(k))
-                if not isinstance(layer, Sneuron_Layer):
-                    continue
-                selectors = layer.get_selectors()
-                selectors_list += selectors
-                axis_label_list += ["selector_layer{0}_l".format(k), "selector_layer{0}_r".format(k)]
-        if isplot:
-            plot_matrices(selectors_list, x_axis_list = axis_label_list)
-        return selectors_list, axis_label_list
-
-
-    def get_snap_dict(self):
-        snap_dict = {}
-        for k in range(len(self.struct_param)):
-            layer = getattr(self, "layer_{0}".format(k))
-            if hasattr(layer, "snap_dict"):
-                recorded_layer_snap_dict = {}
-                for key, item in layer.snap_dict.items():
-                    recorded_layer_snap_dict[key] = {"new_value": item["new_value"]}
-                if len(recorded_layer_snap_dict) > 0:
-                    snap_dict[k] = recorded_layer_snap_dict
-        return snap_dict
-
-
-    def synchronize_settings(self):
-        snap_dict = self.get_snap_dict()
-        if len(snap_dict) > 0:
-            self.settings["snap_dict"] = snap_dict
-        return self.settings
     
     
     @property
