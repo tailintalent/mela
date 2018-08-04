@@ -158,7 +158,7 @@ def get_task(
 
     X_train, X_test, y_train, y_test, reflected_train, reflected_test = train_test_split(X, y, reflect, test_size = test_size)
     if obs_array is not None:
-        obs_X_train, obs_X_test, obs_y_train, obs_y_test = train_test_split(obs_X, obs_y, test_size = test_size)
+        X_train, X_test, y_train, y_test, reflected_train, reflected_test, obs_X_train, obs_X_test, obs_y_train, obs_y_test = train_test_split(X, y, reflect, obs_X, obs_y, test_size = test_size)
     input_size = X.shape[1:]
     output_size = y.shape[1:]
     info["input_size"] = input_size[0] if len(input_size) == 1 else input_size
