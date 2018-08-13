@@ -19,17 +19,17 @@ import torch.utils.data as data_utils
 
 import sys, os
 sys.path.append(os.path.join(os.path.dirname("__file__"), '..', '..'))
-from AI_scientist.util import plot_matrices, make_dir, get_struct_str, get_args, Early_Stopping, record_data, manifold_embedding
-from AI_scientist.settings.filepath import variational_model_PATH
-from AI_scientist.pytorch.modules import Simple_Layer
-from AI_scientist.pytorch.net import Net, ConvNet
-from AI_scientist.pytorch.util_pytorch import Loss_with_uncertainty, get_criterion
-from AI_scientist.variational.variational_meta_learning import Master_Model, Statistics_Net, Generative_Net, load_model_dict, get_regulated_statistics
-from AI_scientist.variational.variational_meta_learning import VAE_Loss, sample_Gaussian, clone_net, get_nets, get_tasks, evaluate, get_reg, load_trained_models
-from AI_scientist.variational.variational_meta_learning import forward, get_forward_pred, get_rollout_pred_loss, get_autoencoder_losses, Loss_with_autoencoder
-from AI_scientist.variational.variational_meta_learning import plot_task_ensembles, plot_individual_tasks, plot_statistics_vs_z, plot_data_record, get_corrcoef
-from AI_scientist.variational.variational_meta_learning import plot_few_shot_loss, plot_individual_tasks_bounce
-from AI_scientist.variational.variational_meta_learning import get_latent_model_data, get_polynomial_class, get_Legendre_class, get_master_function
+from mela.util import plot_matrices, make_dir, get_struct_str, get_args, Early_Stopping, record_data, manifold_embedding
+from mela.settings.filepath import variational_model_PATH
+from mela.pytorch.modules import Simple_Layer
+from mela.pytorch.net import Net, ConvNet
+from mela.pytorch.util_pytorch import Loss_with_uncertainty, get_criterion
+from mela.variational.variational_meta_learning import Master_Model, Statistics_Net, Generative_Net, load_model_dict, get_regulated_statistics
+from mela.variational.variational_meta_learning import VAE_Loss, sample_Gaussian, clone_net, get_nets, get_tasks, evaluate, get_reg, load_trained_models
+from mela.variational.variational_meta_learning import forward, get_forward_pred, get_rollout_pred_loss, get_autoencoder_losses, Loss_with_autoencoder
+from mela.variational.variational_meta_learning import plot_task_ensembles, plot_individual_tasks, plot_statistics_vs_z, plot_data_record, get_corrcoef
+from mela.variational.variational_meta_learning import plot_few_shot_loss, plot_individual_tasks_bounce
+from mela.variational.variational_meta_learning import get_latent_model_data, get_polynomial_class, get_Legendre_class, get_master_function
 
 seed = 1
 np.random.seed(seed)

@@ -22,18 +22,18 @@ pd.options.display.max_colwidth = 300
 from IPython.display import display, HTML
 import sys, os
 sys.path.append(os.path.join(os.path.dirname("__file__"), '..', '..', '..'))
-from AI_scientist.prepare_dataset import Dataset_Gen
-from AI_scientist.util import plot_matrices, make_dir, get_struct_str, get_args, Early_Stopping, record_data, manifold_embedding, get_args, make_dir, sort_two_lists
-from AI_scientist.settings.filepath import variational_model_PATH
-from AI_scientist.settings.global_param import COLOR_LIST
-from AI_scientist.pytorch.net import Net, load_model_dict_net
-from AI_scientist.pytorch.util_pytorch import to_Variable, to_np_array
-from AI_scientist.variational.util_variational import sort_datapoints
-from AI_scientist.variational.variational_meta_learning import Master_Model, Statistics_Net, Generative_Net, load_model_dict
-from AI_scientist.variational.variational_meta_learning import VAE_Loss, sample_Gaussian, clone_net, get_nets, get_tasks, evaluate, get_reg, load_trained_models, get_relevance
-from AI_scientist.variational.variational_meta_learning import plot_task_ensembles, plot_individual_tasks, plot_statistics_vs_z, plot_data_record
-from AI_scientist.variational.variational_meta_learning import plot_few_shot_loss, plot_individual_tasks_bounce
-from AI_scientist.variational.variational_meta_learning import get_latent_model_data, get_polynomial_class, get_Legendre_class, get_master_function
+from mela.prepare_dataset import Dataset_Gen
+from mela.util import plot_matrices, make_dir, get_struct_str, get_args, Early_Stopping, record_data, manifold_embedding, get_args, make_dir, sort_two_lists
+from mela.settings.filepath import variational_model_PATH
+from mela.settings.global_param import COLOR_LIST
+from mela.pytorch.net import Net, load_model_dict_net
+from mela.pytorch.util_pytorch import to_Variable, to_np_array
+from mela.variational.util_variational import sort_datapoints
+from mela.variational.variational_meta_learning import Master_Model, Statistics_Net, Generative_Net, load_model_dict
+from mela.variational.variational_meta_learning import VAE_Loss, sample_Gaussian, clone_net, get_nets, get_tasks, evaluate, get_reg, load_trained_models, get_relevance
+from mela.variational.variational_meta_learning import plot_task_ensembles, plot_individual_tasks, plot_statistics_vs_z, plot_data_record
+from mela.variational.variational_meta_learning import plot_few_shot_loss, plot_individual_tasks_bounce
+from mela.variational.variational_meta_learning import get_latent_model_data, get_polynomial_class, get_Legendre_class, get_master_function
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
@@ -361,9 +361,9 @@ model2 = master_model.cloned_net
 # In[12]:
 
 
-from AI_scientist.pytorch.util_pytorch import get_activation, get_optimizer, get_criterion, Loss_Fun, to_Variable, to_np_array
+from mela.pytorch.util_pytorch import get_activation, get_optimizer, get_criterion, Loss_Fun, to_Variable, to_np_array
 import torch.utils.data as data_utils
-from AI_scientist.variational.variational_meta_learning import quick_learn, plot_quick_learn_performance
+from mela.variational.variational_meta_learning import quick_learn, plot_quick_learn_performance
 mse_list = quick_learn(model, X_train, y_train, validation_data = (X_test, y_test), loss_core = "huber", batch_size = 128, epochs = 50, lr = 1e-3, optim_type = "adam")
 
 

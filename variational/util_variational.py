@@ -14,9 +14,9 @@ from collections import OrderedDict
 import time
 import sys, os
 sys.path.append(os.path.join(os.path.dirname("__file__"), '..', '..'))
-from AI_scientist.util import sort_two_lists
-from AI_scientist.pytorch.util_pytorch import to_np_array
-from AI_scientist.settings.global_param import SCALE_FACTOR
+from mela.util import sort_two_lists
+from mela.pytorch.util_pytorch import to_np_array
+from mela.settings.global_param import SCALE_FACTOR
 
 
 # In[2]:
@@ -231,9 +231,9 @@ def get_env_data(
                                  )
     
     else:
-        from AI_scientist.settings.a2c_env_settings import ENV_SETTINGS_CHOICE
-        from AI_scientist.variational.envs import make_env
-        from AI_scientist.util import plot_matrices
+        from mela.settings.a2c_env_settings import ENV_SETTINGS_CHOICE
+        from mela.variational.envs import make_env
+        from mela.util import plot_matrices
         import random
 
         # Obtain settings from kwargs:

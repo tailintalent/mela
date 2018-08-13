@@ -20,13 +20,13 @@ import warnings
 warnings.filterwarnings(action="ignore", module="scipy", message="^internal gelsd")
 import sys, os
 sys.path.append(os.path.join(os.path.dirname("__file__"), '..', '..'))
-from AI_scientist.prepare_dataset import Dataset_Gen
-from AI_scientist.util import plot_matrices
-from AI_scientist.settings.a2c_env_settings import ENV_SETTINGS_CHOICE
-from AI_scientist.settings.global_param import COLOR_LIST
-from AI_scientist.pytorch.net import Net
-from AI_scientist.pytorch.util_pytorch import get_activation, get_optimizer, get_criterion, Loss_Fun, to_Variable, to_np_array
-from AI_scientist.variational.util_variational import sort_datapoints
+from mela.prepare_dataset import Dataset_Gen
+from mela.util import plot_matrices
+from mela.settings.a2c_env_settings import ENV_SETTINGS_CHOICE
+from mela.settings.global_param import COLOR_LIST
+from mela.pytorch.net import Net
+from mela.pytorch.util_pytorch import get_activation, get_optimizer, get_criterion, Loss_Fun, to_Variable, to_np_array
+from mela.variational.util_variational import sort_datapoints
 
 
 # In[2]:
@@ -1540,8 +1540,8 @@ def get_master_function(
 
 
 def get_bouncing_states(settings, num_examples, data_format = "states", is_cuda = False, **kwargs):
-    from AI_scientist.variational.util_variational import get_env_data
-    from AI_scientist.settings.a2c_env_settings import ENV_SETTINGS_CHOICE
+    from mela.variational.util_variational import get_env_data
+    from mela.settings.a2c_env_settings import ENV_SETTINGS_CHOICE
     render = kwargs["render"] if "render" in kwargs else False
     test_size = settings["test_size"] if "test_size" in settings else 0.2
     env_name = "envBounceStates"

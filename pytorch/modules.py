@@ -14,8 +14,8 @@ from copy import deepcopy
 
 import sys, os
 sys.path.append(os.path.join(os.path.dirname("__file__"), '..', '..'))
-from AI_scientist.pytorch.util_pytorch import get_activation, init_weight, init_bias, init_module_weights, init_module_bias, zero_grad_hook
-from AI_scientist.settings.global_param import AVAILABLE_REG, Default_Activation
+from mela.pytorch.util_pytorch import get_activation, init_weight, init_bias, init_module_weights, init_module_bias, zero_grad_hook
+from mela.settings.global_param import AVAILABLE_REG, Default_Activation
 
 
 # ## Register all layer types:

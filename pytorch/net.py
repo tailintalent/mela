@@ -15,9 +15,9 @@ import torch.optim as optim
 
 import sys, os
 sys.path.append(os.path.join(os.path.dirname("__file__"), '..', '..'))
-from AI_scientist.util import plot_matrices
-from AI_scientist.pytorch.modules import get_Layer, load_layer_dict
-from AI_scientist.pytorch.util_pytorch import softmax, get_activation, get_criterion, get_optimizer, get_full_struct_param
+from mela.util import plot_matrices
+from mela.pytorch.modules import get_Layer, load_layer_dict
+from mela.pytorch.util_pytorch import softmax, get_activation, get_criterion, get_optimizer, get_full_struct_param
 
 
 # In[2]:

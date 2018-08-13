@@ -1,6 +1,6 @@
 import sys, os
 sys.path.append(os.path.join(os.path.dirname("__file__"), '..', '..'))
-from AI_scientist.util import new_dict
+from mela.util import new_dict
 
 ENV_SETTINGS_CHOICE = {"envBounceBase": {
 								 "num_balls": 1,
