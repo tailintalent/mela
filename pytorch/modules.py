@@ -168,8 +168,10 @@ class Simple_Layer(nn.Module):
 
     def forward(self, input, p_dict = None):
         output = input
+        num_examples = output.size(0)
         if hasattr(self, "input_size_original"):
             output = output.view(-1, self.input_size)
+            assert output.size(0) == num_examples, "input_size mismatch with given tensor!"
         # Perform dot(X, W) + b:
         output = torch.matmul(output, self.W_core) + self.b_core
         
@@ -191,6 +193,7 @@ class Simple_Layer(nn.Module):
         output = get_activation(self.activation)(output)
         if hasattr(self, "output_size_original"):
             output = output.view(*((-1,) + self.output_size_original))
+            assert output.size(0) == num_examples, "output_size mismatch with given tensor!"
         return output
     
     
