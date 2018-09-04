@@ -33,13 +33,18 @@ def get_data_loader(task, split='train'):
 
 def forward(net, loader):
     ''' Run all data in the loader through net and return loss '''
+    is_cuda = net.is_cuda
     for i, (in_, target) in enumerate(loader):
         if DEBUG:
             in_ = torch.ones((1, 5)) 
             target = torch.from_numpy(np.ones(1, dtype=np.int64)) 
         #print 'input sizes', in_.numpy().shape, target.cpu().numpy().shape
-        input_var = torch.autograd.Variable(in_).cuda(async=True)
-        target_var = torch.autograd.Variable(target).cuda(async=True)
+        if is_cuda:
+            input_var = torch.autograd.Variable(in_).cuda(async=True)
+            target_var = torch.autograd.Variable(target).cuda(async=True)
+        else:
+            input_var = torch.autograd.Variable(in_)
+            target_var = torch.autograd.Variable(target)
         # Run the batch through the net, compute loss
         out = net.forward(input_var)
         #print 'output shape', out.data.cpu().numpy().shape

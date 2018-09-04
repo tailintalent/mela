@@ -36,7 +36,9 @@ class OmniglotNet(nn.Module):
         self.loss_fn = loss_fn
 
         # Initialize weights
+        self.is_cuda = torch.cuda.is_available()
         self._init_weights()
+        
 
     def forward(self, x, weights=None):
         ''' Define what happens to data in the net '''
@@ -45,20 +47,20 @@ class OmniglotNet(nn.Module):
             x = x.view(x.size(0), 64)
             x = self.fc(x)
         else:
-            x = conv2d(x, weights['features.conv1.weight'], weights['features.conv1.bias'])
-            x = batchnorm(x, weight = weights['features.bn1.weight'], bias = weights['features.bn1.bias'], momentum=1)
+            x = conv2d(x, weights['features.conv1.weight'], weights['features.conv1.bias'], is_cuda = self.is_cuda)
+            x = batchnorm(x, weight = weights['features.bn1.weight'], bias = weights['features.bn1.bias'], momentum=1, is_cuda = self.is_cuda)
             x = relu(x)
             x = maxpool(x, kernel_size=2, stride=2) 
-            x = conv2d(x, weights['features.conv2.weight'], weights['features.conv2.bias'])
-            x = batchnorm(x, weight = weights['features.bn2.weight'], bias = weights['features.bn2.bias'], momentum=1)
+            x = conv2d(x, weights['features.conv2.weight'], weights['features.conv2.bias'], is_cuda = self.is_cuda)
+            x = batchnorm(x, weight = weights['features.bn2.weight'], bias = weights['features.bn2.bias'], momentum=1, is_cuda = self.is_cuda)
             x = relu(x)
             x = maxpool(x, kernel_size=2, stride=2) 
-            x = conv2d(x, weights['features.conv3.weight'], weights['features.conv3.bias'])
-            x = batchnorm(x, weight = weights['features.bn3.weight'], bias = weights['features.bn3.bias'], momentum=1)
+            x = conv2d(x, weights['features.conv3.weight'], weights['features.conv3.bias'], is_cuda = self.is_cuda)
+            x = batchnorm(x, weight = weights['features.bn3.weight'], bias = weights['features.bn3.bias'], momentum=1, is_cuda = self.is_cuda)
             x = relu(x)
             x = maxpool(x, kernel_size=2, stride=2) 
             x = x.view(x.size(0), 64)
-            x = linear(x, weights['fc.weight'], weights['fc.bias'])
+            x = linear(x, weights['fc.weight'], weights['fc.bias'], is_cuda = self.is_cuda)
         return x
 
     def net_forward(self, x, weights=None):
@@ -67,8 +69,9 @@ class OmniglotNet(nn.Module):
     def _init_weights(self):
         ''' Set weights to Gaussian, biases to zero '''
         torch.manual_seed(1337)
-        torch.cuda.manual_seed(1337)
-        torch.cuda.manual_seed_all(1337)
+        if self.is_cuda:
+            torch.cuda.manual_seed(1337)
+            torch.cuda.manual_seed_all(1337)
         print 'init weights'
         for m in self.modules():
             if isinstance(m, nn.Conv2d):

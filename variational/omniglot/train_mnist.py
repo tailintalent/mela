@@ -18,9 +18,13 @@ Train convolutional network on the MNIST dataset classification task
 Test different network initializations.
 '''
 
-def forward(net, in_, target, loss_fn):
-    input_var = torch.autograd.Variable(in_).cuda(async=True)
-    target_var = torch.autograd.Variable(target.long().cuda(async=True))
+def forward(net, in_, target, loss_fn, is_cuda = False):
+    if is_cuda:
+        input_var = torch.autograd.Variable(in_).cuda(async=True)
+        target_var = torch.autograd.Variable(target.long().cuda(async=True))
+    else:
+        input_var = torch.autograd.Variable(in_)
+        target_var = torch.autograd.Variable(target.long())
     out = net(input_var)
     loss = loss_fn(out, target_var)
     return out, loss
@@ -39,9 +43,10 @@ def train(train_loader, val_loader, net, loss_fn, opt, epoch):
     tacc = []
     vloss = []
     vacc = []
+    is_cuda = net.is_cuda
     for i, (in_, target) in enumerate(train_loader):
         net.train()
-        out, loss = forward(net, in_, target, loss_fn)
+        out, loss = forward(net, in_, target, loss_fn, is_cuda = is_cuda)
         opt.zero_grad()
         loss.backward()
         opt.step()
@@ -61,8 +66,9 @@ def val(loader, net, loss_fn):
     net.eval() 
     losses = []
     acc = []
+    is_cuda = net.is_cuda
     for i, (in_, target) in enumerate(loader):
-        out, loss = forward(net, in_, target, loss_fn)
+        out, loss = forward(net, in_, target, loss_fn, is_cuda = is_cuda)
         losses.append(loss.data.cpu().numpy()[0])
         acc.append(accuracy(out, target))
     losses = np.array(losses)

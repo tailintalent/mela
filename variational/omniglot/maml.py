@@ -49,9 +49,11 @@ class MetaLearner(object):
         #TODO: don't actually need two nets
         num_input_channels = 1 if self.dataset == 'mnist' else 3
         self.net = OmniglotNet(num_classes, self.loss_fn, num_input_channels)
-        self.net.cuda()
         self.fast_net = InnerLoop(num_classes, self.loss_fn, self.num_inner_updates, self.inner_step_size, self.inner_batch_size, self.meta_batch_size, num_input_channels)
-        self.fast_net.cuda()
+        self.is_cuda = torch.cuda.is_available()
+        if self.is_cuda:
+            self.net.cuda()
+            self.fast_net.cuda()
         self.opt = Adam(self.net.parameters(), lr=meta_step_size)
             
     def get_task(self, root, n_cl, n_inst, split='train'):
@@ -98,7 +100,8 @@ class MetaLearner(object):
         for _ in range(10):
             # Make a test net with same parameters as our current net
             test_net.copy_weights(self.net)
-            test_net.cuda()
+            if self.is_cuda:
+                test_net.cuda()
             test_opt = SGD(test_net.parameters(), lr=self.inner_step_size)
             task = self.get_task('../data/{}'.format(self.dataset), self.num_classes, self.num_inst, split='test')
             # Train on the train examples, using the same number of updates as in training

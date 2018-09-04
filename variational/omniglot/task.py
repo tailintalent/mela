@@ -15,7 +15,7 @@ class OmniglotTask(object):
 
     def __init__(self, root, num_cls, num_inst, split='train'):
         self.dataset = 'omniglot'
-        self.root = '{}/images_background'.format(root) if split == 'train' else '{}/images_evaluation'.format(root)
+        self.root = 'images_background'.format(root) if split == 'train' else 'images_evaluation'.format(root)
         self.num_cl = num_cls
         self.num_inst = num_inst
         # Sample num_cls characters and num_inst instances of each

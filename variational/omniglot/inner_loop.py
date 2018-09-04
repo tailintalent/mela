@@ -30,6 +30,8 @@ class InnerLoop(OmniglotNet):
 
         # for loss normalization 
         self.meta_batch_size = meta_batch_size
+
+        self.is_cuda = torch.cuda.is_available()
     
 
     def net_forward(self, x, weights=None):
@@ -37,8 +39,12 @@ class InnerLoop(OmniglotNet):
 
     def forward_pass(self, in_, target, weights=None):
         ''' Run data through net, return loss and output '''
-        input_var = torch.autograd.Variable(in_).cuda(async=True)
-        target_var = torch.autograd.Variable(target).cuda(async=True)
+        if self.is_cuda:
+            input_var = torch.autograd.Variable(in_).cuda(async=True)
+            target_var = torch.autograd.Variable(target).cuda(async=True)
+        else:
+            input_var = torch.autograd.Variable(in_)
+            target_var = torch.autograd.Variable(target)
         # Run the batch through the net, compute loss
         out = self.net_forward(input_var, weights)
         loss = self.loss_fn(out, target_var)

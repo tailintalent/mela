@@ -9,14 +9,23 @@ Useful for when weights are exposed rather
 than being contained in modules
 '''
 
-def linear(input, weight, bias=None):
-    if bias is None:
-        return F.linear(input, weight.cuda())
+def linear(input, weight, bias=None, is_cuda = False):
+    if is_cuda:
+        if bias is None:
+            return F.linear(input, weight.cuda())
+        else:
+            return F.linear(input, weight.cuda(), bias.cuda())
     else:
-        return F.linear(input, weight.cuda(), bias.cuda())
+        if bias is None:
+            return F.linear(input, weight)
+        else:
+            return F.linear(input, weight, bias)
 
-def conv2d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
-    return F.conv2d(input, weight.cuda(), bias.cuda(), stride, padding, dilation, groups)
+def conv2d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1, is_cuda = False):
+    if is_cuda:
+        return F.conv2d(input, weight.cuda(), bias.cuda(), stride, padding, dilation, groups)
+    else:
+        return F.conv2d(input, weight, bias, stride, padding, dilation, groups)
 
 def relu(input):
     return F.threshold(input, 0, 0, inplace=True)
@@ -24,12 +33,16 @@ def relu(input):
 def maxpool(input, kernel_size, stride=None):
     return F.max_pool2d(input, kernel_size, stride)
 
-def batchnorm(input, weight=None, bias=None, running_mean=None, running_var=None, training=True, eps=1e-5, momentum=0.1):
+def batchnorm(input, weight=None, bias=None, running_mean=None, running_var=None, training=True, eps=1e-5, momentum=0.1, is_cuda = False):
     ''' momentum = 1 restricts stats to the current mini-batch '''
     # This hack only works when momentum is 1 and avoids needing to track running stats
     # by substuting dummy variables
-    running_mean = torch.zeros(np.prod(np.array(input.data.size()[1]))).cuda()
-    running_var = torch.ones(np.prod(np.array(input.data.size()[1]))).cuda()
+    if is_cuda:
+        running_mean = torch.zeros(np.prod(np.array(input.data.size()[1]))).cuda()
+        running_var = torch.ones(np.prod(np.array(input.data.size()[1]))).cuda()
+    else:
+        running_mean = torch.zeros(np.prod(np.array(input.data.size()[1])))
+        running_var = torch.ones(np.prod(np.array(input.data.size()[1])))
     return F.batch_norm(input, running_mean, running_var, weight, bias, training, momentum, eps)
 
 def bilinear_upsample(in_, factor):
