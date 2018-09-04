@@ -55,9 +55,14 @@ def forward(net, loader):
 def evaluate(net, loader):
     ''' Evaluate the net on the data in the loader '''
     num_correct = 0
+    is_cuda = net.is_cuda
     for i, (in_, target) in enumerate(loader):
-        input_var = torch.autograd.Variable(in_).cuda(async=True)
-        target_var = torch.autograd.Variable(target).cuda(async=True)
+        if is_cuda:
+            input_var = torch.autograd.Variable(in_).cuda(async=True)
+            target_var = torch.autograd.Variable(target).cuda(async=True)
+        else:
+            input_var = torch.autograd.Variable(in_)
+            target_var = torch.autograd.Variable(target)
         out = net.forward(input_var)
         loss = loss_fn(out, target_var)
         num_correct += count_correct(np.argmax(out.data.cpu().numpy(), axis=1), target.numpy())
