@@ -3,7 +3,7 @@
 This repository implements [Meta-Learning Autoencoders (MeLA)](https://arxiv.org/abs/1807.09912), a framework that can transform a model that is originally intended for single-task learning into one that can quickly adapt to new tasks with few examples without training. It augments  the single-task model with a meta-recognition model which learns a succinct task representation using just a few informative examples, and a meta-generative model to construct parameters for the task-specific model. MeLA has 3 core capabilities:
 
 1. **Augmented model recognition**: MeLA strategically builds on a pre-existing, single-task trained network, augmenting it with a second network used for meta-recognition. It achieves lower loss in unseen environments at zero and few gradient steps, compared both the original architecture upon which it is based and with state-of-the-art meta-learning algorithms.
-2. **Influence identification**: MeLA can identify the which examples are most useful for determining the model (for example, a rectangle’s vertices have far greater influence in determining its position and size than its inferior points), and
+2. **Influence identification**: MeLA can identify which examples are most useful for determining the model (for example, a rectangle’s vertices have far greater influence in determining its position and size than its inferior points), and
 3. **Interactive learning**: MeLA can actively request new samples which maximize its ability to learn models.
 
 
