@@ -70,7 +70,7 @@ class MetaLearner(object):
         loader = get_data_loader(task, self.inner_batch_size, split='val')
         in_, target = loader.__iter__().next()
         # We use a dummy forward / backward pass to get the correct grads into self.net
-        loss, out = forward_pass(self.net, in_, target)
+        loss, out = forward_pass(self.net, in_, target, is_cuda = self.is_cuda)
         # Unpack the list of grad dicts
         gradients = {k: sum(d[k] for d in ls) for k in ls[0].keys()}
         # Register a hook on each parameter in the net that replaces the current dummy grad
@@ -108,7 +108,7 @@ class MetaLearner(object):
             train_loader = get_data_loader(task, self.inner_batch_size, split='train')
             for i in range(self.num_inner_updates):
                 in_, target = train_loader.__iter__().next()
-                loss, _  = forward_pass(test_net, in_, target)
+                loss, _  = forward_pass(test_net, in_, target, is_cuda = self.is_cuda)
                 test_opt.zero_grad()
                 loss.backward()
                 test_opt.step()
