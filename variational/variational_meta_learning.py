@@ -24,8 +24,8 @@ from mela.prepare_dataset import Dataset_Gen
 from mela.util import plot_matrices
 from mela.settings.a2c_env_settings import ENV_SETTINGS_CHOICE
 from mela.settings.global_param import COLOR_LIST
-from mela.pytorch.net import Net
-from mela.pytorch.util_pytorch import get_activation, get_optimizer, get_criterion, Loss_Fun, to_Variable, to_np_array
+from mela.pytorch.net import Net, ConvNet
+from mela.pytorch.util_pytorch import get_activation, get_optimizer, get_criterion, Loss_Fun, to_Variable, to_np_array, to_one_hot, flatten
 from mela.variational.util_variational import sort_datapoints, predict_forward, reshape_time_series
 
 
@@ -231,6 +231,24 @@ def load_model_dict(model_dict, is_cuda = False):
         net.post_pooling_Net.load_model_dict(model_dict["post_pooling_Net"])
         if model_dict["struct_param_post_logvar"] is not None:
             net.post_pooling_logvar_Net.load_model_dict(model_dict["post_pooling_logvar_Net"])
+    elif model_dict["type"] == "Statistics_Net_Conv":
+        net = Statistics_Net_Conv(input_channels = model_dict["input_channels"],
+                                  num_cls = model_dict["num_cls"],
+                                  pre_pooling_neurons = model_dict["pre_pooling_neurons"],
+                                  struct_param_pre_conv = model_dict["struct_param_pre_conv"],
+                                  struct_param_pre = model_dict["struct_param_pre"],
+                                  struct_param_post = model_dict["struct_param_post"],
+                                  struct_param_post_logvar = model_dict["struct_param_post_logvar"],
+                                  pooling = model_dict["pooling"],
+                                  settings = model_dict["settings"],
+                                  layer_type = model_dict["layer_type"],
+                                  is_cuda = is_cuda,
+                                 )
+        net.encoding_statistics_ConvNet.load_model_dict(model_dict["encoding_statistics_ConvNet"])
+        net.encoding_statistics_Net.load_model_dict(model_dict["encoding_statistics_Net"])
+        net.post_pooling_Net.load_model_dict(model_dict["post_pooling_Net"])
+        if model_dict["struct_param_post_logvar"] is not None:
+            net.post_pooling_logvar_Net.load_model_dict(model_dict["post_pooling_logvar_Net"])
     elif model_dict["type"] == "Generative_Net":
         learnable_latent_param = model_dict["learnable_latent_param"] if "learnable_latent_param" in model_dict else False
         net = Generative_Net(input_size = model_dict["input_size"],
@@ -325,6 +343,85 @@ class Statistics_Net(nn.Module):
     
     def forward_inputs(self, X, y):
         return self(torch.cat([X, y], 1))
+    
+
+    def get_regularization(self, source = ["weight", "bias"], mode = "L1"):
+        reg = self.encoding_statistics_Net.get_regularization(source = source, mode = mode) +               self.post_pooling_Net.get_regularization(source = source, mode = mode)
+        if self.struct_param_post_logvar is not None:
+            reg = reg + self.post_pooling_logvar_Net.get_regularization(source = source, mode = mode)
+        return reg
+
+    
+class Statistics_Net_Conv(nn.Module):
+    def __init__(self, input_channels, num_cls, pre_pooling_neurons, struct_param_pre_conv, struct_param_pre, struct_param_post, struct_param_post_logvar = None, pooling = "max", settings = {"activation": "leakyRelu"}, layer_type = "Simple_layer", is_cuda = False):
+        super(Statistics_Net_Conv, self).__init__()
+        self.input_channels = input_channels
+        self.num_cls = num_cls
+        self.pre_pooling_neurons = pre_pooling_neurons
+        self.struct_param_pre_conv = struct_param_pre_conv
+        self.struct_param_pre = struct_param_pre
+        self.struct_param_post = struct_param_post
+        self.struct_param_post_logvar = struct_param_post_logvar
+        self.pooling = pooling
+        self.settings = settings
+        self.layer_type = layer_type
+        self.is_cuda = is_cuda
+
+        self.encoding_statistics_ConvNet = ConvNet(input_channels = self.input_channels, struct_param = self.struct_param_pre_conv, settings = self.settings, is_cuda = is_cuda)
+        X = Variable(torch.zeros(10, 3, 28, 28))
+        if is_cuda:
+            X = X.cuda()
+        dim_enc_conv = flatten(self.encoding_statistics_ConvNet(X)[0]).size(1)
+        self.encoding_statistics_Net = Net(input_size = dim_enc_conv + num_cls, struct_param = self.struct_param_pre, settings = self.settings, is_cuda = is_cuda)
+        self.post_pooling_Net = Net(input_size = self.pre_pooling_neurons, struct_param = self.struct_param_post, settings = self.settings, is_cuda = is_cuda)
+        if self.struct_param_post_logvar is not None:
+            self.post_pooling_logvar_Net = Net(input_size = self.pre_pooling_neurons, struct_param = self.struct_param_post_logvar, settings = self.settings, is_cuda = is_cuda)
+        if self.is_cuda:
+            self.cuda()
+
+    def model_dict(self):
+        model_dict = {"type": "Statistics_Net_Conv"}
+        model_dict["input_channels"] = self.input_channels
+        model_dict["num_cls"] = self.num_cls
+        model_dict["pre_pooling_neurons"] = self.pre_pooling_neurons
+        model_dict["struct_param_pre_conv"] = self.struct_param_pre_conv
+        model_dict["struct_param_pre"] = self.struct_param_pre
+        model_dict["struct_param_post"] = self.struct_param_post
+        model_dict["struct_param_post_logvar"] = self.struct_param_post_logvar
+        model_dict["pooling"] = self.pooling
+        model_dict["settings"] = self.settings
+        model_dict["layer_type"] = self.layer_type
+        model_dict["encoding_statistics_Net"] = self.encoding_statistics_Net.model_dict
+        model_dict["encoding_statistics_ConvNet"] = self.encoding_statistics_ConvNet.model_dict
+        model_dict["post_pooling_Net"] = self.post_pooling_Net.model_dict
+        if self.struct_param_post_logvar is not None:
+            model_dict["post_pooling_logvar_Net"] = self.post_pooling_logvar_Net.model_dict
+        return model_dict
+
+    def load_model_dict(self, model_dict):
+        new_net = load_model_dict(model_dict, is_cuda = self.is_cuda)
+        self.__dict__.update(new_net.__dict__)
+
+    def forward(self, X, y):
+        encoding_X, _ = self.encoding_statistics_ConvNet(X)
+        encoding_X = flatten(encoding_X)
+        encoding = torch.cat([encoding_X, to_one_hot(y, self.num_cls)], 1)
+        encoding = self.encoding_statistics_Net(encoding)
+        if self.pooling == "mean":
+            pooled = encoding.mean(0)
+        elif self.pooling == "max":
+            pooled = encoding.max(0)[0]
+        else:
+            raise Exception("pooling {0} not recognized!".format(self.pooling))
+        output = self.post_pooling_Net(pooled.unsqueeze(0))
+        if self.struct_param_post_logvar is None:
+            return output
+        else:
+            logvar = self.post_pooling_logvar_Net(pooled.unsqueeze(0))
+            return output, logvar
+    
+    def forward_inputs(self, X, y):
+        return self(X, y)
     
 
     def get_regularization(self, source = ["weight", "bias"], mode = "L1"):
