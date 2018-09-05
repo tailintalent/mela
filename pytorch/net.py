@@ -17,7 +17,7 @@ import sys, os
 sys.path.append(os.path.join(os.path.dirname("__file__"), '..', '..'))
 from mela.util import plot_matrices
 from mela.pytorch.modules import get_Layer, load_layer_dict
-from mela.pytorch.util_pytorch import softmax, get_activation, get_criterion, get_optimizer, get_full_struct_param
+from mela.pytorch.util_pytorch import softmax, get_activation, get_criterion, get_optimizer, get_full_struct_param, to_np_array
 
 
 # In[2]:
@@ -33,6 +33,14 @@ def load_model_dict_net(model_dict, is_cuda = False):
                    settings = model_dict["settings"],
                    is_cuda = is_cuda,
                   )
+    elif net_type == "ConvNet":
+        return ConvNet(input_channels = model_dict["input_channels"],
+                       struct_param = model_dict["struct_param"],
+                       W_init_list = model_dict["weights"],
+                       b_init_list = model_dict["bias"],
+                       settings = model_dict["settings"],
+                       is_cuda = is_cuda,
+                      )
     else:
         raise Exception("net_type {0} not recognized!".format(net_type))
 
@@ -270,7 +278,7 @@ class Net(nn.Module):
         model_dict["input_size"] = self.input_size
         model_dict["struct_param"] = get_full_struct_param(self.struct_param, self.settings)
         model_dict["weights"], model_dict["bias"] = self.get_weights_bias(W_source = "core", b_source = "core")
-        model_dict["settings"] = self.synchronize_settings()
+        model_dict["settings"] = self.settings
         model_dict["net_type"] = "Net"
         return model_dict
 
@@ -398,9 +406,20 @@ class RNN_with_encoder(nn.Module):
 
 
 class ConvNet(nn.Module):
-    def __init__(self, input_channels, struct_param, settings = {}, is_cuda = False):
+    def __init__(
+        self,
+        input_channels,
+        struct_param,
+        W_init_list = None,
+        b_init_list = None,
+        settings = {},
+        is_cuda = False,
+        ):
         super(ConvNet, self).__init__()
+        self.input_channels = input_channels
         self.struct_param = struct_param
+        self.W_init_list = W_init_list
+        self.b_init_list = b_init_list
         self.settings = settings
         self.num_layers = len(struct_param)
         self.is_cuda = is_cuda
@@ -446,6 +465,12 @@ class ConvNet(nn.Module):
                                    )
             else:
                 raise Exception("layer_type {0} not recognized!".format(layer_type))
+            
+            # Initialize using provided initial values:
+            if self.W_init_list is not None and self.W_init_list[i] is not None:
+                layer.weight.data = torch.FloatTensor(self.W_init_list[i])
+                layer.bias.data = torch.FloatTensor(self.b_init_list[i])
+            
             setattr(self, "layer_{0}".format(i), layer)
         if self.is_cuda:
             self.cuda()
@@ -496,4 +521,38 @@ class ConvNet(nn.Module):
                 else:
                     raise Exception("mode {0} not recognized!".format(mode))
         return reg
+
+
+    def get_weights_bias(self, W_source = "core", b_source = "core"):
+        W_list = []
+        b_list = []
+        weight_available = ["Conv2d", "ConvTranspose2d"]
+        for k in range(self.num_layers):
+            if self.struct_param[k][1] in weight_available:
+                layer = getattr(self, "layer_{0}".format(k))
+                if W_source == "core":
+                    W_list.append(to_np_array(layer.weight))
+                if b_source == "core":
+                    b_list.append(to_np_array(layer.bias))
+            else:
+                if W_source == "core":
+                    W_list.append(None)
+                if b_source == "core":
+                    b_list.append(None)
+        return W_list, b_list
+
+
+    @property
+    def model_dict(self):
+        model_dict = {"type": "ConvNet"}
+        model_dict["input_channels"] = self.input_channels
+        model_dict["struct_param"] = self.struct_param
+        model_dict["settings"] = self.settings
+        model_dict["weights"], model_dict["bias"] = self.get_weights_bias(W_source = "core", b_source = "core")
+        return model_dict
+    
+
+    def load_model_dict(self, model_dict):
+        new_net = load_model_dict_net(model_dict, is_cuda = self.is_cuda)
+        self.__dict__.update(new_net.__dict__)
 

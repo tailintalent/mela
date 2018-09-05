@@ -78,7 +78,10 @@ def to_np_array(*arrays):
             if array.is_cuda:
                 array = array.cpu()
             array = array.data
-        if isinstance(array, torch.FloatTensor) or isinstance(array, torch.LongTensor) or isinstance(array, torch.ByteTensor):
+        if isinstance(array, torch.FloatTensor) or isinstance(array, torch.LongTensor) or isinstance(array, torch.ByteTensor) or \
+           isinstance(array, torch.cuda.FloatTensor) or isinstance(array, torch.cuda.LongTensor) or isinstance(array, torch.cuda.ByteTensor):
+            if array.is_cuda:
+                array = array.cpu()
             array = array.numpy()
         array_list.append(array)
     if len(array_list) == 1:
@@ -693,3 +696,19 @@ def get_full_struct_param(struct_param, settings):
         return tuple(struct_param_new_list)
     else:
         return get_full_struct_param_ele(struct_param, settings)
+    
+    
+def to_one_hot(tensor, num_cls):
+    if len(tensor.shape) == 1:
+        tensor = tensor.unsqueeze(1)
+    assert len(tensor.shape) == 2
+    assert tensor.shape[1] == 1
+    tensor_onehot = Variable(torch.zeros(tensor.size(0), num_cls))
+    if tensor.is_cuda:
+        tensor_onehot = tensor_onehot.cuda()
+    tensor_onehot.scatter_(1, tensor, 1)
+    return tensor_onehot
+
+
+def flatten(tensor):
+    return tensor.view(tensor.size(0), -1)
