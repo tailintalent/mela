@@ -38,11 +38,11 @@ def batchnorm(input, weight=None, bias=None, running_mean=None, running_var=None
     # This hack only works when momentum is 1 and avoids needing to track running stats
     # by substuting dummy variables
     if is_cuda:
-        running_mean = torch.zeros(np.prod(np.array(input.data.size()[1]))).cuda()
-        running_var = torch.ones(np.prod(np.array(input.data.size()[1]))).cuda()
+        running_mean = torch.zeros(int(np.prod(np.array(input.data.size()[1])))).cuda()
+        running_var = torch.ones(int(np.prod(np.array(input.data.size()[1])))).cuda()
     else:
-        running_mean = torch.zeros(np.prod(np.array(input.data.size()[1])))
-        running_var = torch.ones(np.prod(np.array(input.data.size()[1])))
+        running_mean = torch.zeros(int(np.prod(np.array(input.data.size()[1]))))
+        running_var = torch.ones(int(np.prod(np.array(input.data.size()[1]))))
     return F.batch_norm(input, running_mean, running_var, weight, bias, training, momentum, eps)
 
 def bilinear_upsample(in_, factor):
