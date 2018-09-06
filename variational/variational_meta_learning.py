@@ -57,7 +57,7 @@ class Master_Model(nn.Module):
         self.__dict__.update(new_net.__dict__)
 
     def get_statistics(self, X, y):
-        statistics = self.statistics_Net(torch.cat([X, y], 1))
+        statistics = self.statistics_Net(X, y)
         if isinstance(statistics, tuple):
             statistics = statistics[0]
         else:
@@ -98,7 +98,7 @@ class Master_Model(nn.Module):
         ):
         results = {}
         if is_VAE:
-            statistics_mu, statistics_logvar = self.statistics_Net.forward_inputs(X_train, y_train)
+            statistics_mu, statistics_logvar = self.statistics_Net(X_train, y_train)
             statistics = sample_Gaussian(statistics_mu, statistics_logvar)
             results["statistics_mu"] = statistics_mu
             results["statistics_logvar"] = statistics_logvar
@@ -110,7 +110,7 @@ class Master_Model(nn.Module):
             results["y_pred"] = y_pred
         else:
             if is_uncertainty_net:
-                statistics_mu, statistics_logvar = self.statistics_Net.forward_inputs(X_train, y_train)
+                statistics_mu, statistics_logvar = self.statistics_Net(X_train, y_train)
                 results["statistics_mu"] = statistics_mu
                 results["statistics_logvar"] = statistics_logvar
                 results["statistics"] = statistics
@@ -125,7 +125,7 @@ class Master_Model(nn.Module):
                 results["y_pred"] = y_pred
                 results["y_pred_logstd"] = y_pred_logstd
             else:
-                statistics = self.statistics_Net.forward_inputs(X_train, y_train)
+                statistics = self.statistics_Net(X_train, y_train)
                 results["statistics"] = statistics
                 if is_regulated_net:
                     statistics = get_regulated_statistics(self.generative_Net, statistics)
@@ -353,8 +353,9 @@ class Statistics_Net(nn.Module):
         new_net = load_model_dict(model_dict, is_cuda = self.is_cuda)
         self.__dict__.update(new_net.__dict__)
 
-    def forward(self, input):
-        encoding = self.encoding_statistics_Net(input)
+    def forward(self, X, y):
+        input_cat = torch.cat([X, y], 1)
+        encoding = self.encoding_statistics_Net(input_cat)
         if self.pooling == "mean":
             pooled = encoding.mean(0)
         elif self.pooling == "max":
@@ -367,9 +368,6 @@ class Statistics_Net(nn.Module):
         else:
             logvar = self.post_pooling_logvar_Net(pooled.unsqueeze(0))
             return output, logvar
-    
-    def forward_inputs(self, X, y):
-        return self(torch.cat([X, y], 1))
     
 
     def get_regularization(self, source = ["weight", "bias"], mode = "L1"):
@@ -446,10 +444,6 @@ class Statistics_Net_Conv(nn.Module):
         else:
             logvar = self.post_pooling_logvar_Net(pooled.unsqueeze(0))
             return output, logvar
-    
-    def forward_inputs(self, X, y):
-        return self(X, y)
-    
 
     def get_regularization(self, source = ["weight", "bias"], mode = "L1"):
         reg = self.encoding_statistics_Net.get_regularization(source = source, mode = mode) +               self.post_pooling_Net.get_regularization(source = source, mode = mode)
@@ -1294,7 +1288,7 @@ def evaluate(task, master_model = None, model = None, criterion = None, is_time_
     if master_model is not None:
         assert model is None
         if is_VAE:
-            statistics_mu, statistics_logvar = master_model.statistics_Net(torch.cat([X_train, y_train], 1))
+            statistics_mu, statistics_logvar = master_model.statistics_Net(X_train, y_train)
             statistics_sampled = sample_Gaussian(statistics_mu, statistics_logvar)
             y_pred_sampled = master_model.generative_Net(X_test, statistics_sampled)
             loss_sampled, KLD = criterion(y_pred_sampled, y_test, statistics_mu, statistics_logvar)
@@ -1305,7 +1299,7 @@ def evaluate(task, master_model = None, model = None, criterion = None, is_time_
             return loss.data[0], loss_sampled.data[0], mse.data[0], KLD.data[0]
         else:
             if master_model.generative_Net_logstd is None:
-                statistics = master_model.statistics_Net(torch.cat([X_train, y_train], 1))
+                statistics = master_model.statistics_Net(X_train, y_train)
                 if is_regulated_net:
                     statistics = get_regulated_statistics(master_model.generative_Net, statistics)
                 if autoencoder is not None:
@@ -1318,7 +1312,7 @@ def evaluate(task, master_model = None, model = None, criterion = None, is_time_
                     loss = criterion(y_pred, y_test)
                     mse = loss_fun(y_pred, y_test)  
             else:
-                statistics_mu, statistics_logvar = master_model.statistics_Net(torch.cat([X_train, y_train], 1))
+                statistics_mu, statistics_logvar = master_model.statistics_Net(X_train, y_train)
                 if is_regulated_net:
                     statistics_mu = get_regulated_statistics(master_model.generative_Net, statistics_mu)
                     statistics_logvar = get_regulated_statistics(master_model.generative_Net_logstd, statistics_logvar)
@@ -1549,12 +1543,12 @@ def plot_individual_tasks_bounce(
         # Get model prediction:
         if master_model is not None:
             if num_shots is None:
-                statistics = master_model.statistics_Net.forward_inputs(X_train, y_train[:, :target_forward_steps * 2])
+                statistics = master_model.statistics_Net(X_train, y_train[:, :target_forward_steps * 2])
             else:
                 idx = torch.LongTensor(np.random.choice(range(len(X_train)), min(len(X_train), num_shots), replace = False))
                 if is_cuda:
                     idx = idx.cuda()
-                statistics = master_model.statistics_Net.forward_inputs(X_train[idx], y_train[idx, :target_forward_steps * 2])
+                statistics = master_model.statistics_Net(X_train[idx], y_train[idx, :target_forward_steps * 2])
             if isinstance(statistics, tuple):
                 statistics = statistics[0]
 
@@ -1639,7 +1633,7 @@ def plot_few_shot_loss(master_model, tasks, isplot = True, is_time_series = True
                 idx = idx.cuda()
             X_few_shot = X_train[idx]
             y_few_shot = y_train[idx]
-            statistics = master_model.statistics_Net.forward_inputs(X_few_shot, y_few_shot)
+            statistics = master_model.statistics_Net(X_few_shot, y_few_shot)
             if isinstance(statistics, tuple):
                 statistics = statistics[0]
             if autoencoder is not None:
