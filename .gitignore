@@ -3,7 +3,6 @@
 data/*
 datasets/*
 backup/*
-variational/omniglot/*
 logs/*
 */exp/*
 
