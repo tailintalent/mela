@@ -481,10 +481,17 @@ class ConvNet(nn.Module):
 
 
     def forward(self, input, indices_list = None):
+        return self.inspect_operation(input, operation_between = (0, self.num_layers), indices_list = indices_list)
+    
+    
+    def inspect_operation(self, input, operation_between, indices_list = None):
         output = input
         if indices_list is None:
             indices_list = []
-        for i in range(len(self.struct_param)):
+        start_layer, end_layer = operation_between
+        if end_layer < 0:
+            end_layer += self.num_layers
+        for i in range(start_layer, end_layer):
             if "Unpool" in self.struct_param[i][1]:
                 output_tentative = getattr(self, "layer_{0}".format(i))(output, indices_list.pop(-1))
             else:
@@ -500,8 +507,8 @@ class ConvNet(nn.Module):
                 if "activation" in self.settings:
                     activation = self.settings["activation"]
                 else:
-                    activation = "relu"
-                if "Pool" in self.struct_param[i - 1][1] or "Unpool" in self.struct_param[i - 1][1] or "Upsample" in self.struct_param[i - 1][1]:
+                    activation = "linear"
+                if "Pool" in self.struct_param[i][1] or "Unpool" in self.struct_param[i][1] or "Upsample" in self.struct_param[i][1]:
                     activation = "linear"
             output = get_activation(activation)(output)
         return output, indices_list

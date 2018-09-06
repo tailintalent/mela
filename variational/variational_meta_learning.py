@@ -234,7 +234,7 @@ def load_model_dict(model_dict, is_cuda = False):
             net.post_pooling_logvar_Net.load_model_dict(model_dict["post_pooling_logvar_Net"])
     elif model_dict["type"] == "Statistics_Net_Conv":
         net = Statistics_Net_Conv(input_channels = model_dict["input_channels"],
-                                  num_cls = model_dict["num_cls"],
+                                  num_classes = model_dict["num_classes"],
                                   pre_pooling_neurons = model_dict["pre_pooling_neurons"],
                                   struct_param_pre_conv = model_dict["struct_param_pre_conv"],
                                   struct_param_pre = model_dict["struct_param_pre"],
@@ -378,10 +378,10 @@ class Statistics_Net(nn.Module):
 
     
 class Statistics_Net_Conv(nn.Module):
-    def __init__(self, input_channels, num_cls, pre_pooling_neurons, struct_param_pre_conv, struct_param_pre, struct_param_post, struct_param_post_logvar = None, pooling = "max", settings = {"activation": "leakyRelu"}, layer_type = "Simple_layer", is_cuda = False):
+    def __init__(self, input_channels, num_classes, pre_pooling_neurons, struct_param_pre_conv, struct_param_pre, struct_param_post, struct_param_post_logvar = None, pooling = "max", settings = {"activation": "leakyRelu"}, layer_type = "Simple_layer", is_cuda = False):
         super(Statistics_Net_Conv, self).__init__()
         self.input_channels = input_channels
-        self.num_cls = num_cls
+        self.num_classes = num_classes
         self.pre_pooling_neurons = pre_pooling_neurons
         self.struct_param_pre_conv = struct_param_pre_conv
         self.struct_param_pre = struct_param_pre
@@ -397,7 +397,7 @@ class Statistics_Net_Conv(nn.Module):
         if is_cuda:
             X = X.cuda()
         dim_enc_conv = flatten(self.encoding_statistics_ConvNet(X)[0]).size(1)
-        self.encoding_statistics_Net = Net(input_size = dim_enc_conv + num_cls, struct_param = self.struct_param_pre, settings = self.settings, is_cuda = is_cuda)
+        self.encoding_statistics_Net = Net(input_size = dim_enc_conv + num_classes, struct_param = self.struct_param_pre, settings = self.settings, is_cuda = is_cuda)
         self.post_pooling_Net = Net(input_size = self.pre_pooling_neurons, struct_param = self.struct_param_post, settings = self.settings, is_cuda = is_cuda)
         if self.struct_param_post_logvar is not None:
             self.post_pooling_logvar_Net = Net(input_size = self.pre_pooling_neurons, struct_param = self.struct_param_post_logvar, settings = self.settings, is_cuda = is_cuda)
@@ -407,7 +407,7 @@ class Statistics_Net_Conv(nn.Module):
     def model_dict(self):
         model_dict = {"type": "Statistics_Net_Conv"}
         model_dict["input_channels"] = self.input_channels
-        model_dict["num_cls"] = self.num_cls
+        model_dict["num_classes"] = self.num_classes
         model_dict["pre_pooling_neurons"] = self.pre_pooling_neurons
         model_dict["struct_param_pre_conv"] = self.struct_param_pre_conv
         model_dict["struct_param_pre"] = self.struct_param_pre
@@ -430,7 +430,7 @@ class Statistics_Net_Conv(nn.Module):
     def forward(self, X, y):
         encoding_X, _ = self.encoding_statistics_ConvNet(X)
         encoding_X = flatten(encoding_X)
-        encoding = torch.cat([encoding_X, to_one_hot(y, self.num_cls)], 1)
+        encoding = torch.cat([encoding_X, to_one_hot(y, self.num_classes)], 1)
         encoding = self.encoding_statistics_Net(encoding)
         if self.pooling == "mean":
             pooled = encoding.mean(0)
@@ -618,14 +618,24 @@ class Generative_Net(nn.Module):
             loss_list.append(loss.data[0])
         loss_list = np.array(loss_list)
         return loss_list
-
-
+    
+    
     def forward(self, input, latent_param = None):
+        return self.inspect_operation(input, operation_between = (0, len(self.W_struct_param_list)), latent_param = latent_param)
+
+
+    def inspect_operation(self, input, operation_between, latent_param = None):
+        output = input
+        start_layer, end_layer = operation_between
+        if end_layer < 0:
+            end_layer += self.num_layers
+        
         if latent_param is None:
             latent_param = self.latent_param
         self.init_weights_bias(latent_param)
         output = input
-        for i in range(len(self.W_struct_param_list)):
+
+        for i in range(start_layer, end_layer):
             output = torch.matmul(output, getattr(self, "W_{0}".format(i))) + getattr(self, "b_{0}".format(i))
             if i == len(self.W_struct_param_list) - 1 and hasattr(self, "last_layer_linear") and self.last_layer_linear:
                 activation = "linear"
@@ -713,12 +723,21 @@ class Generative_Net_Conv(nn.Module):
                 setattr(self, "b_{0}".format(i), getattr(self, "b_gen_{0}".format(i))(latent_param)) 
    
     def forward(self, input, latent_param = None):
+        return self.inspect_operation(input, operation_between = (0, len(self.struct_param_model)), latent_param = latent_param)
+    
+    def inspect_operation(self, input, operation_between, latent_param = None):
+        output = input
+        start_layer, end_layer = operation_between
+        if end_layer < 0:
+            end_layer += self.num_layers
+        
         if latent_param is None:
             latent_param = self.latent_param
         self.init_weights_bias(latent_param)
         output = input
-        for i in range(len(self.struct_param_model)):
-            layer_struct_param = self.struct_param_model[i]
+        
+        for i in range(start_layer, end_layer):
+            layer_struct_param = self.struct_param_model[i]    
             num_neurons_prev = self.struct_param_model[i - 1][0] if i > 0 else self.input_channels
             num_neurons = layer_struct_param[0]
             layer_type = layer_struct_param[1]
@@ -762,9 +781,10 @@ class Generative_Net_Conv(nn.Module):
                                       bias = bias,
                                      )
             elif layer_type == "Simple_Layer":
+                num_neurons_prev = int(np.prod(output.size()[1:]))
                 weight = getattr(self, "W_{0}".format(i)).view(num_neurons_prev, num_neurons)
                 bias = getattr(self, "b_{0}".format(i)).view(-1)
-                output = torch.matmul(output, weight) + bias
+                output = torch.matmul(flatten(output), weight) + bias
             elif layer_type == "MaxPool2d":
                 output = F.max_pool2d(output,
                                       layer_settings["kernel_size"],
@@ -793,8 +813,9 @@ class Generative_Net_Conv(nn.Module):
                 if "activation" in layer_settings:
                     activation = layer_settings["activation"]
                 else:
-                    activation = self.settings_model["activation"] if "activation" in self.settings_model else "leakyRelu"
-            
+                    activation = self.settings_model["activation"] if "activation" in self.settings_model else "linear"
+                if "Pool" in self.struct_param_model[i][1] or "Unpool" in self.struct_param_model[i][1] or "Upsample" in self.struct_param_model[i][1]:
+                    activation = "linear"
             output = get_activation(activation)(output)
         return output
 

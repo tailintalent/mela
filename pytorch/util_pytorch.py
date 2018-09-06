@@ -712,3 +712,10 @@ def to_one_hot(tensor, num_cls):
 
 def flatten(tensor):
     return tensor.view(tensor.size(0), -1)
+
+
+def get_num_params(model):
+    count = 0
+    for param in model.parameters():
+        count += len(param.view(-1))
+    return count
