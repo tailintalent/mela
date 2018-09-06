@@ -15,6 +15,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.utils.data as data_utils
+import torch.nn.functional as F
 from torch.autograd import Variable
 import warnings
 warnings.filterwarnings(action="ignore", module="scipy", message="^internal gelsd")
@@ -263,6 +264,32 @@ def load_model_dict(model_dict, is_cuda = False):
         for i, W_struct_param in enumerate(model_dict["W_struct_param_list"]):
             getattr(net, "W_gen_{0}".format(i)).load_model_dict(model_dict["W_gen_{0}".format(i)])
             getattr(net, "b_gen_{0}".format(i)).load_model_dict(model_dict["b_gen_{0}".format(i)])
+        if "latent_param" in model_dict and model_dict["latent_param"] is not None:
+            if net.latent_param is not None:
+                net.latent_param.data.copy_(torch.FloatTensor(model_dict["latent_param"]))
+            else:
+                net.latent_param = Variable(torch.FloatTensor(model_dict["latent_param"]), requires_grad = False)
+                if is_cuda:
+                    net.latent_param = net.latent_param.cuda()
+        if "context" in model_dict:
+            net.context.data.copy_(torch.FloatTensor(model_dict["context"]))
+    elif model_dict["type"] == "Generative_Net_Conv":
+        learnable_latent_param = model_dict["learnable_latent_param"] if "learnable_latent_param" in model_dict else False
+        net = Generative_Net_Conv(input_channels = model_dict["input_channels"],
+                             latent_size = model_dict["latent_size"],
+                             W_struct_param_list = model_dict["W_struct_param_list"],
+                             b_struct_param_list = model_dict["b_struct_param_list"],
+                             struct_param_model = model_dict["struct_param_model"],
+                             num_context_neurons = model_dict["num_context_neurons"],
+                             settings_generative = model_dict["settings_generative"],
+                             settings_model = model_dict["settings_model"],
+                             learnable_latent_param = True,
+                             is_cuda = is_cuda,
+                            )
+        for i in range(len(model_dict["struct_param_model"])):
+            if model_dict["struct_param_model"][i][1] in model_dict["param_available"]:
+                getattr(net, "W_gen_{0}".format(i)).load_model_dict(model_dict["W_gen_{0}".format(i)])
+                getattr(net, "b_gen_{0}".format(i)).load_model_dict(model_dict["b_gen_{0}".format(i)])
         if "latent_param" in model_dict and model_dict["latent_param"] is not None:
             if net.latent_param is not None:
                 net.latent_param.data.copy_(torch.FloatTensor(model_dict["latent_param"]))
@@ -639,6 +666,299 @@ class Generative_Net(nn.Module):
                     reg = reg + getattr(self, "b_gen_{0}".format(i)).get_regularization(source = source, mode = mode)
             else:
                 raise Exception("source {0} not recognized!".format(reg_type))
+        return reg
+
+    
+class Generative_Net_Conv(nn.Module):
+    def __init__(
+        self, 
+        input_channels,
+        latent_size,
+        W_struct_param_list,
+        b_struct_param_list,
+        struct_param_model,
+        num_context_neurons = 0, 
+        settings_generative = {"activation": "leakyRelu"}, 
+        settings_model = {"activation": "leakyRelu"}, 
+        learnable_latent_param = False,
+        last_layer_linear = True,
+        is_cuda = False,
+        ):
+        super(Generative_Net_Conv, self).__init__()
+        assert len(struct_param_model) == len(W_struct_param_list) == len(b_struct_param_list)
+        self.input_channels = input_channels
+        self.latent_size = latent_size
+        self.W_struct_param_list = W_struct_param_list
+        self.b_struct_param_list = b_struct_param_list
+        self.struct_param_model = struct_param_model
+        self.num_context_neurons = num_context_neurons
+        self.settings_generative = settings_generative
+        self.settings_model = settings_model
+        self.learnable_latent_param = learnable_latent_param
+        self.last_layer_linear = last_layer_linear
+        self.is_cuda = is_cuda
+        self.param_available = ["Conv2d", "ConvTranspose2d", "BatchNorm2d", "Simple_Layer"]
+
+        for i in range(len(self.struct_param_model)):
+            if self.struct_param_model[i][1] in self.param_available:
+                setattr(self, "W_gen_{0}".format(i), Net(input_size = self.latent_size + num_context_neurons, struct_param = self.W_struct_param_list[i], settings = self.settings_generative, is_cuda = is_cuda))
+                setattr(self, "b_gen_{0}".format(i), Net(input_size = self.latent_size + num_context_neurons, struct_param = self.b_struct_param_list[i], settings = self.settings_generative, is_cuda = is_cuda))  
+        # Setting up latent param and context param:
+        self.latent_param = nn.Parameter(torch.randn(1, self.latent_size)) if learnable_latent_param else None
+        if self.num_context_neurons > 0:
+            self.context = nn.Parameter(torch.randn(1, self.num_context_neurons))
+        if self.is_cuda:
+            self.cuda()
+
+    def init_weights_bias(self, latent_param):
+        if self.num_context_neurons > 0:
+            latent_param = torch.cat([latent_param, self.context], 1)
+        for i in range(len(self.struct_param_model)):
+            if self.struct_param_model[i][1] in self.param_available:
+                setattr(self, "W_{0}".format(i), (getattr(self, "W_gen_{0}".format(i))(latent_param)).squeeze(0))
+                setattr(self, "b_{0}".format(i), getattr(self, "b_gen_{0}".format(i))(latent_param)) 
+   
+    def forward(self, input, latent_param = None):
+        if latent_param is None:
+            latent_param = self.latent_param
+        self.init_weights_bias(latent_param)
+        output = input
+        for i in range(len(self.struct_param_model)):
+            layer_struct_param = self.struct_param_model[i]
+            num_neurons_prev = self.struct_param_model[i - 1][0] if i > 0 else self.input_channels
+            num_neurons = layer_struct_param[0]
+            layer_type = layer_struct_param[1]
+            layer_settings = layer_struct_param[2]
+
+            if layer_type in ["Conv2d", "ConvTranspose2d"]:
+                kernel_size = layer_settings["kernel_size"]
+                weight = getattr(self, "W_{0}".format(i)).view(num_neurons, num_neurons_prev, kernel_size, kernel_size)
+                bias = getattr(self, "b_{0}".format(i)).view(-1)
+                if layer_type == "Conv2d":
+                    output = F.conv2d(output,
+                                      weight = weight,
+                                      bias = bias,
+                                      stride = layer_settings["stride"],
+                                      padding = layer_settings["padding"] if "padding" in layer_settings else 0,
+                                      dilation = layer_settings["dilation"] if "dilation" in layer_settings else 1,
+                                     )
+                elif layer_type == "Conv2dTranspose":
+                    output = F.conv_transpose2d(output,
+                                      weight = weight,
+                                      bias = bias,
+                                      stride = layer_settings["stride"],
+                                      padding = layer_settings["padding"] if "padding" in layer_settings else 0,
+                                      dilation = layer_settings["dilation"] if "dilation" in layer_settings else 1,
+                                     )
+                else:
+                    raise Exception("Layer_type {0} not valid!".format(layer_type))
+            elif layer_type == "BatchNorm2d":
+                weight = getattr(self, "W_{0}".format(i)).view(-1)
+                bias = getattr(self, "b_{0}".format(i)).view(-1)
+                running_mean = torch.zeros(num_neurons)
+                running_var = torch.ones(num_neurons)
+                if self.is_cuda:
+                    running_mean = running_mean.cuda()
+                    running_var = running_var.cuda()
+                # Here we are using a hack, letting momentum = 1 to avoid calculating the running statistics:
+                output = F.batch_norm(output,
+                                      running_mean = running_mean,
+                                      running_var = running_var, 
+                                      weight = weight, 
+                                      bias = bias,
+                                     )
+            elif layer_type == "Simple_Layer":
+                weight = getattr(self, "W_{0}".format(i)).view(num_neurons_prev, num_neurons)
+                bias = getattr(self, "b_{0}".format(i)).view(-1)
+                output = torch.matmul(output, weight) + bias
+            elif layer_type == "MaxPool2d":
+                output = F.max_pool2d(output,
+                                      layer_settings["kernel_size"],
+                                      stride = layer_settings["stride"] if "stride" in layer_settings else None,
+                                      padding = layer_settings["padding"] if "padding" in layer_settings else 0,
+                                      return_indices = layer_settings["return_indices"] if "return_indices" in layer_settings else False,
+                                     )
+            elif layer_type == "MaxUnpool2d":
+                output = F.max_unpool2d(output,
+                                      layer_settings["kernel_size"],
+                                      stride = layer_settings["stride"] if "stride" in layer_settings else None,
+                                      padding = layer_settings["padding"] if "padding" in layer_settings else 0,
+                                     )
+            elif layer_type == "Upsample":
+                output = F.upsample(output,
+                                    scale_factor = layer_settings["scale_factor"],
+                                    mode = layer_settings["mode"] if "mode" in layer_settings else "nearest",
+                                   )
+            else:
+                raise Exception("Layer_type {0} not valid!".format(layer_type))
+
+            # Activation:
+            if i == len(self.struct_param_model) - 1 and hasattr(self, "last_layer_linear") and self.last_layer_linear:
+                activation = "linear"
+            else:
+                if "activation" in layer_settings:
+                    activation = layer_settings["activation"]
+                else:
+                    activation = self.settings_model["activation"] if "activation" in self.settings_model else "leakyRelu"
+            
+            output = get_activation(activation)(output)
+        return output
+
+    @property
+    def model_dict(self):
+        model_dict = {"type": "Generative_Net_Conv"}
+        model_dict["input_channels"] = self.input_channels
+        model_dict["latent_size"] = self.latent_size
+        model_dict["W_struct_param_list"] = self.W_struct_param_list
+        model_dict["b_struct_param_list"] = self.b_struct_param_list
+        model_dict["struct_param_model"] = self.struct_param_model
+        model_dict["num_context_neurons"] = self.num_context_neurons
+        model_dict["settings_generative"] = self.settings_generative
+        model_dict["settings_model"] = self.settings_model
+        model_dict["param_available"] = self.param_available
+        model_dict["learnable_latent_param"] = self.learnable_latent_param
+        model_dict["last_layer_linear"] = self.last_layer_linear
+        for i in range(len(self.struct_param_model)):
+            if self.struct_param_model[i][1] in self.param_available:
+                model_dict["W_gen_{0}".format(i)] = getattr(self, "W_gen_{0}".format(i)).model_dict
+                model_dict["b_gen_{0}".format(i)] = getattr(self, "b_gen_{0}".format(i)).model_dict
+        if self.latent_param is None:
+            model_dict["latent_param"] = None
+        else:
+            model_dict["latent_param"] = self.latent_param.cpu().data.numpy() if self.is_cuda else self.latent_param.data.numpy()
+        if hasattr(self, "context"):
+            model_dict["context"] = self.context.data.numpy() if not self.is_cuda else self.context.cpu().data.numpy()
+        return model_dict
+    
+    def set_latent_param_learnable(self, mode):
+        if mode == "on":
+            if not self.learnable_latent_param:
+                self.learnable_latent_param = True
+                if self.latent_param is None:
+                    self.latent_param = nn.Parameter(torch.randn(1, self.input_size))
+                else:
+                    self.latent_param = nn.Parameter(self.latent_param.data)
+            else:
+                assert isinstance(self.latent_param, nn.Parameter)
+        elif mode == "off":
+            if self.learnable_latent_param:
+                assert isinstance(self.latent_param, nn.Parameter)
+                self.learnable_latent_param = False
+                self.latent_param = Variable(self.latent_param.data, requires_grad = False)
+            else:
+                assert isinstance(self.latent_param, Variable) or self.latent_param is None
+        else:
+            raise
+
+    def load_model_dict(self, model_dict):
+        new_net = load_model_dict(model_dict, is_cuda = self.is_cuda)
+        self.__dict__.update(new_net.__dict__)
+
+
+    def get_weights_bias(self, W_source = None, b_source = None, isplot = False, latent_param = None):
+        if latent_param is not None:
+            self.init_weights_bias(latent_param)
+        W_list = []
+        b_list = []
+        if W_source is not None:
+            for k in range(len(self.W_struct_param_list)):
+                if W_source == "core":
+                    W = getattr(self, "W_{0}".format(k)).data.numpy()
+                else:
+                    raise Exception("W_source '{0}' not recognized!".format(W_source))
+                W_list.append(W)
+        if b_source is not None:
+            for k in range(len(self.b_struct_param_list)):
+                if b_source == "core":
+                    b = getattr(self, "b_{0}".format(k)).data.numpy()
+                else:
+                    raise Exception("b_source '{0}' not recognized!".format(b_source))
+                b_list.append(b)
+        if isplot:
+            if W_source is not None:
+                print("weight {0}:".format(W_source))
+                plot_matrices(W_list)
+            if b_source is not None:
+                print("bias {0}:".format(b_source))
+                plot_matrices(b_list)
+        return W_list, b_list
+
+    
+    def set_latent_param(self, latent_param):
+        assert isinstance(latent_param, Variable), "The latent_param must be a Variable!"
+        if self.learnable_latent_param:
+            self.latent_param.data.copy_(latent_param.data)
+        else:
+            self.latent_param = latent_param
+    
+    
+    def latent_param_quick_learn(self, X, y, validation_data, loss_core = "huber", epochs = 10, batch_size = 128, lr = 1e-2, optim_type = "LBFGS"):
+        assert self.learnable_latent_param is True, "To quick-learn latent_param, you must set learnable_latent_param as True!"
+        self.latent_param_optimizer = get_optimizer(optim_type = optim_type, lr = lr, parameters = [self.latent_param])
+        self.criterion = get_criterion(loss_core)
+        loss_list = []
+        X_test, y_test = validation_data
+        batch_size = min(batch_size, len(X))
+        if isinstance(X, Variable):
+            X = X.data
+        if isinstance(y, Variable):
+            y = y.data
+
+        dataset_train = data_utils.TensorDataset(X, y)
+        train_loader = data_utils.DataLoader(dataset_train, batch_size = batch_size, shuffle = True)
+        
+        y_pred_test = self(X_test)
+        loss = get_criterion("mse")(y_pred_test, y_test)
+        loss_list.append(loss.data[0])
+        for i in range(epochs):
+            for batch_idx, (X_batch, y_batch) in enumerate(train_loader):
+                X_batch = Variable(X_batch)
+                y_batch = Variable(y_batch)
+                if optim_type == "LBFGS":
+                    def closure():
+                        self.latent_param_optimizer.zero_grad()
+                        y_pred = self(X_batch)
+                        loss = self.criterion(y_pred, y_batch)
+                        loss.backward()
+                        return loss
+                    self.latent_param_optimizer.step(closure)
+                else:
+                    self.latent_param_optimizer.zero_grad()
+                    y_pred = self(X_batch)
+                    loss = self.criterion(y_pred, y_batch)
+                    loss.backward()
+                    self.latent_param_optimizer.step()
+            y_pred_test = self(X_test)
+            loss = get_criterion("mse")(y_pred_test, y_test)
+            loss_list.append(loss.data[0])
+        loss_list = np.array(loss_list)
+        return loss_list
+
+
+    def get_regularization(self, source = ["weight", "bias"], mode = "L1"):
+        reg = Variable(torch.FloatTensor(np.array([0])), requires_grad = False)
+        if self.is_cuda:
+            reg = reg.cuda()
+        for reg_type in source:
+            for i in range(len(self.struct_param_model)):
+                if self.struct_param_model[i][1] not in self.param_available:
+                    continue
+                if reg_type == "weight":
+                    if mode == "L1":
+                        reg = reg + getattr(self, "W_{0}".format(i)).abs().sum()
+                    else:
+                        raise
+                elif reg_type == "bias":
+                    if mode == "L1":
+                        reg = reg + getattr(self, "b_{0}".format(i)).abs().sum()
+                    else:
+                        raise
+                elif reg_type == "W_gen":
+                    reg = reg + getattr(self, "W_gen_{0}".format(i)).get_regularization(source = source, mode = mode)
+                elif reg_type == "b_gen":
+                    reg = reg + getattr(self, "b_gen_{0}".format(i)).get_regularization(source = source, mode = mode)
+                else:
+                    raise Exception("source {0} not recognized!".format(reg_type))
         return reg
 
 

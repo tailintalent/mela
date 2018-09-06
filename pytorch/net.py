@@ -440,6 +440,7 @@ class ConvNet(nn.Module):
                                   kernel_size = layer_settings["kernel_size"],
                                   stride = layer_settings["stride"],
                                   padding = layer_settings["padding"] if "padding" in layer_settings else 0,
+                                  dilation = layer_settings["dilation"] if "dilation" in layer_settings else 1,
                                  )
             elif layer_type == "ConvTranspose2d":
                 layer = nn.ConvTranspose2d(num_channels_prev,
@@ -447,6 +448,7 @@ class ConvNet(nn.Module):
                                            kernel_size = layer_settings["kernel_size"],
                                            stride = layer_settings["stride"],
                                            padding = layer_settings["padding"] if "padding" in layer_settings else 0,
+                                           dilation = layer_settings["dilation"] if "dilation" in layer_settings else 1,
                                           )
             elif layer_type == "MaxPool2d":
                 layer = nn.MaxPool2d(kernel_size = layer_settings["kernel_size"],
@@ -463,6 +465,8 @@ class ConvNet(nn.Module):
                 layer = nn.Upsample(scale_factor = layer_settings["scale_factor"],
                                     mode = layer_settings["mode"] if "mode" in layer_settings else "nearest",
                                    )
+            elif layer_type == "BatchNorm2d":
+                layer = nn.BatchNorm2d(num_features = num_channels)
             else:
                 raise Exception("layer_type {0} not recognized!".format(layer_type))
             
@@ -526,9 +530,9 @@ class ConvNet(nn.Module):
     def get_weights_bias(self, W_source = "core", b_source = "core"):
         W_list = []
         b_list = []
-        weight_available = ["Conv2d", "ConvTranspose2d"]
+        param_available = ["Conv2d", "ConvTranspose2d", "BatchNorm2d"]
         for k in range(self.num_layers):
-            if self.struct_param[k][1] in weight_available:
+            if self.struct_param[k][1] in param_available:
                 layer = getattr(self, "layer_{0}".format(k))
                 if W_source == "core":
                     W_list.append(to_np_array(layer.weight))
