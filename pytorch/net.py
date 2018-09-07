@@ -15,9 +15,10 @@ import torch.optim as optim
 
 import sys, os
 sys.path.append(os.path.join(os.path.dirname("__file__"), '..', '..'))
-from mela.util import plot_matrices
+from mela.util import plot_matrices, Early_Stopping, record_data
 from mela.pytorch.modules import get_Layer, load_layer_dict
-from mela.pytorch.util_pytorch import softmax, get_activation, get_criterion, get_optimizer, get_full_struct_param, to_np_array
+from mela.pytorch.util_pytorch import softmax, get_activation, get_criterion, get_optimizer, get_full_struct_param, to_np_array, to_Variable, flatten, get_optimizer
+from torch.optim.lr_scheduler import ReduceLROnPlateau, LambdaLR
 
 
 # In[2]:
@@ -43,6 +44,112 @@ def load_model_dict_net(model_dict, is_cuda = False):
                       )
     else:
         raise Exception("net_type {0} not recognized!".format(net_type))
+
+
+def train(model, X, y, validation_data = None, criterion = nn.MSELoss(), inspect_interval = 10, isplot = False, **kwargs):
+    """minimal version of training. "model" can be a single model or a ordered list of models"""
+    def get_regularization(model, **kwargs):
+        reg_dict = kwargs["reg_dict"] if "reg_dict" in kwargs else {}
+        reg = to_Variable(np.array([0]), is_cuda = X.is_cuda)
+        for reg_type, reg_coeff in reg_dict.items():
+            reg = reg + model.get_regularization(source = [reg_type], mode = "L1", **kwargs) * reg_coeff
+        return reg
+    epochs = kwargs["epochs"] if "epochs" in kwargs else 10000
+    lr = kwargs["lr"] if "lr" in kwargs else 5e-3
+    optim_type = kwargs["optim_type"] if "optim_type" in kwargs else "adam"
+    optim_kwargs = kwargs["optim_kwargs"] if "optim_kwargs" in kwargs else {}
+    early_stopping_epsilon = kwargs["early_stopping_epsilon"] if "early_stopping_epsilon" in kwargs else 0
+    patience = kwargs["patience"] if "patience" in kwargs else 20
+    record_keys = kwargs["record_keys"] if "record_keys" in kwargs else ["loss"]
+    scheduler_type = kwargs["scheduler_type"] if "scheduler_type" in kwargs else "ReduceLROnPlateau"
+    data_record = {key: [] for key in record_keys}
+    if patience is not None:
+        early_stopping = Early_Stopping(patience = patience, epsilon = early_stopping_epsilon)
+    
+    if validation_data is not None:
+        X_valid, y_valid = validation_data
+    else:
+        X_valid, y_valid = X, y
+    
+    # Get original loss:
+    loss_original = model.get_loss(X_valid, y_valid, criterion).data[0]
+    if "loss" in record_keys:
+        record_data(data_record, [-1, model.get_loss(X_valid, y_valid, criterion).data[0]], ["iter", "loss"])
+    if "param" in record_keys:
+        record_data(data_record, [model.get_weights_bias(W_source = "core", b_source = "core")], ["param"])
+    if "param_grad" in record_keys:
+        record_data(data_record, [model.get_weights_bias(W_source = "core", b_source = "core", is_grad = True)], ["param_grad"])
+
+    # Setting up optimizer:
+    parameters = model.parameters()
+    num_params = len(list(model.parameters()))
+    if num_params == 0:
+        print("No parameters to optimize!")
+        loss_value = model.get_loss(X_valid, y_valid, criterion).data[0]
+        if "loss" in record_keys:
+            record_data(data_record, [0, model.get_loss(X_valid, y_valid, criterion).data[0]], ["iter", "loss"])
+        if "param" in record_keys:
+            record_data(data_record, [model.get_weights_bias(W_source = "core", b_source = "core")], ["param"])
+        if "param_grad" in record_keys:
+            record_data(data_record, [model.get_weights_bias(W_source = "core", b_source = "core", is_grad = True)], ["param_grad"])
+        return loss_original, loss_value, data_record
+    optimizer = get_optimizer(optim_type, lr, parameters, **optim_kwargs)
+    
+    # Set up learning rate scheduler:
+    if scheduler_type is not None:
+        if scheduler_type == "ReduceLROnPlateau":
+            scheduler_patience = kwargs["scheduler_patience"] if "scheduler_patience" in kwargs else 10
+            scheduler_factor = kwargs["scheduler_factor"] if "scheduler_factor" in kwargs else 0.1
+            scheduler_verbose = kwargs["scheduler_verbose"] if "scheduler_verbose" in kwargs else False
+            scheduler = ReduceLROnPlateau(optimizer, factor = scheduler_factor, patience = scheduler_patience, verbose = scheduler_verbose)
+        elif scheduler_type == "LambdaLR":
+            scheduler_lr_lambda = kwargs["scheduler_lr_lambda"] if "scheduler_lr_lambda" in kwargs else (lambda epoch: 1 / (1 + 0.01 * epoch))
+            scheduler = LambdaLR(optimizer, lr_lambda = scheduler_lr_lambda)
+        else:
+            raise
+
+    # Training:
+    to_stop = False
+    for i in range(epochs + 1):
+        if optim_type != "LBFGS":
+            optimizer.zero_grad()
+            reg = get_regularization(model, **kwargs)
+            loss = model.get_loss(X, y, criterion, **kwargs) + reg
+            loss.backward()
+            optimizer.step()
+        else:
+            # "LBFGS" is a second-order optimization algorithm that requires a slightly different procedure:
+            def closure():
+                optimizer.zero_grad()
+                reg = get_regularization(model, **kwargs)
+                loss = model.get_loss(X, y, criterion, **kwargs) + reg
+                loss.backward()
+                return loss
+            optimizer.step(closure)
+        if i % inspect_interval == 0:
+            loss_value = model.get_loss(X_valid, y_valid, criterion).data[0]
+            if scheduler_type is not None:
+                if scheduler_type == "ReduceLROnPlateau":
+                    scheduler.step(loss_value)
+                else:
+                    scheduler.step()
+            if "loss" in record_keys:
+                record_data(data_record, [i, model.get_loss(X_valid, y_valid, criterion).data[0]], ["iter", "loss"])
+            if "param" in record_keys:
+                record_data(data_record, [model.get_weights_bias(W_source = "core", b_source = "core")], ["param"])
+            if "param_grad" in record_keys:
+                record_data(data_record, [model.get_weights_bias(W_source = "core", b_source = "core", is_grad = True)], ["param_grad"])
+            if patience is not None:
+                to_stop = early_stopping.monitor(loss_value)
+        if to_stop:
+            break
+
+    loss_value = model.get_loss(X_valid, y_valid, criterion).data[0]
+    if isplot:
+        import matplotlib.pylab as plt
+        plt.semilogy(data_record["iter"], data_record["loss"])
+        plt.show()
+    return loss_original, loss_value, data_record
 
 
 # In[3]:
@@ -110,7 +217,7 @@ class Net(nn.Module):
             output = layer(output)
 
 
-    def forward(self, input, p_dict = None):
+    def forward(self, input, p_dict = None, **kwargs):
         output = input
         for k in range(len(self.struct_param)):
             if p_dict is None:
@@ -118,6 +225,11 @@ class Net(nn.Module):
             else:
                 output = getattr(self, "layer_{0}".format(k))(output, p_dict = p_dict[k])
         return output
+
+    
+    def get_loss(self, input, target, criterion, **kwargs):
+        y_pred = self(input, **kwargs)
+        return criterion(y_pred, target)
 
 
     def init_with_p_dict(self, p_dict):
@@ -138,6 +250,8 @@ class Net(nn.Module):
 
 
     def get_regularization(self, source = ["weight", "bias"], mode = "L1"):
+        if not isinstance(source, list):
+            source = [source]
         reg = Variable(torch.FloatTensor([0]), requires_grad = False)
         if self.is_cuda:
             reg = reg.cuda()
@@ -217,11 +331,14 @@ class Net(nn.Module):
             to_prune.pop(i)
             model.prune_neurons(-1, to_prune)
         return construct_net_ensemble_from_nets(model_list)
-            
 
-    def inspect_operation(self, input_, operation_between):
-        output = input_
-        for k in range(*operation_between):
+
+    def inspect_operation(self, input, operation_between):
+        start_layer, end_layer = operation_between
+        if end_layer < 0:
+            end_layer += self.num_layers
+        output = input
+        for k in range(start_layer, end_layer):
             output = getattr(self, "layer_{0}".format(k))(output)
         return output
 
@@ -450,6 +567,15 @@ class ConvNet(nn.Module):
                                            padding = layer_settings["padding"] if "padding" in layer_settings else 0,
                                            dilation = layer_settings["dilation"] if "dilation" in layer_settings else 1,
                                           )
+            elif layer_type == "Simple_Layer":
+                layer = get_Layer(layer_type = layer_type,
+                              input_size = layer_settings["layer_input_size"],
+                              output_size = num_channels,
+                              W_init = W_init_list[i],
+                              b_init = b_init_list[i],
+                              settings = layer_settings,
+                              is_cuda = self.is_cuda,
+                             )
             elif layer_type == "MaxPool2d":
                 layer = nn.MaxPool2d(kernel_size = layer_settings["kernel_size"],
                                      stride = layer_settings["stride"] if "stride" in layer_settings else None,
@@ -471,7 +597,7 @@ class ConvNet(nn.Module):
                 raise Exception("layer_type {0} not recognized!".format(layer_type))
             
             # Initialize using provided initial values:
-            if self.W_init_list is not None and self.W_init_list[i] is not None:
+            if self.W_init_list is not None and self.W_init_list[i] is not None and layer_type not in ["Simple_Layer"]:
                 layer.weight.data = torch.FloatTensor(self.W_init_list[i])
                 layer.bias.data = torch.FloatTensor(self.b_init_list[i])
             
@@ -480,7 +606,7 @@ class ConvNet(nn.Module):
             self.cuda()
 
 
-    def forward(self, input, indices_list = None):
+    def forward(self, input, indices_list = None, **kwargs):
         return self.inspect_operation(input, operation_between = (0, self.num_layers), indices_list = indices_list)
     
     
@@ -494,6 +620,8 @@ class ConvNet(nn.Module):
         for i in range(start_layer, end_layer):
             if "Unpool" in self.struct_param[i][1]:
                 output_tentative = getattr(self, "layer_{0}".format(i))(output, indices_list.pop(-1))
+            elif self.struct_param[i][1] == "Simple_Layer":
+                output_tentative = getattr(self, "layer_{0}".format(i))(flatten(output))
             else:
                 output_tentative = getattr(self, "layer_{0}".format(i))(output)
             if isinstance(output_tentative, tuple):
@@ -514,7 +642,14 @@ class ConvNet(nn.Module):
         return output, indices_list
 
 
+    def get_loss(self, input, target, criterion, **kwargs):
+        y_pred, _ = self(input, **kwargs)
+        return criterion(y_pred, target)
+
+
     def get_regularization(self, source = ["weight", "bias"], mode = "L1"):
+        if not isinstance(source, list):
+            source = [source]
         reg = Variable(torch.FloatTensor([0]), requires_grad = False)
         if self.is_cuda:
             reg = reg.cuda()
@@ -545,6 +680,12 @@ class ConvNet(nn.Module):
                     W_list.append(to_np_array(layer.weight))
                 if b_source == "core":
                     b_list.append(to_np_array(layer.bias))
+            elif self.struct_param[k][1] == "Simple_Layer":
+                layer = getattr(self, "layer_{0}".format(k))
+                if W_source == "core":
+                    W_list.append(to_np_array(layer.W_core))
+                if b_source == "core":
+                    b_list.append(to_np_array(layer.b_core))
             else:
                 if W_source == "core":
                     W_list.append(None)

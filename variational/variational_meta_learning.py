@@ -548,14 +548,14 @@ class Generative_Net(nn.Module):
         if W_source is not None:
             for k in range(len(self.W_struct_param_list)):
                 if W_source == "core":
-                    W = getattr(self, "W_{0}".format(k)).data.numpy()
+                    W = to_np_array(getattr(self, "W_{0}".format(k)))
                 else:
                     raise Exception("W_source '{0}' not recognized!".format(W_source))
                 W_list.append(W)
         if b_source is not None:
             for k in range(len(self.b_struct_param_list)):
                 if b_source == "core":
-                    b = getattr(self, "b_{0}".format(k)).data.numpy()
+                    b = to_np_array(getattr(self, "b_{0}".format(k)))
                 else:
                     raise Exception("b_source '{0}' not recognized!".format(b_source))
                 b_list.append(b)
@@ -870,25 +870,31 @@ class Generative_Net_Conv(nn.Module):
         self.__dict__.update(new_net.__dict__)
 
 
-    def get_weights_bias(self, W_source = None, b_source = None, isplot = False, latent_param = None):
+    def get_weights_bias(self, W_source = "core", b_source = "core", isplot = False, latent_param = None):
         if latent_param is not None:
             self.init_weights_bias(latent_param)
         W_list = []
         b_list = []
-        if W_source is not None:
-            for k in range(len(self.W_struct_param_list)):
-                if W_source == "core":
-                    W = getattr(self, "W_{0}".format(k)).data.numpy()
-                else:
-                    raise Exception("W_source '{0}' not recognized!".format(W_source))
-                W_list.append(W)
-        if b_source is not None:
-            for k in range(len(self.b_struct_param_list)):
-                if b_source == "core":
-                    b = getattr(self, "b_{0}".format(k)).data.numpy()
-                else:
-                    raise Exception("b_source '{0}' not recognized!".format(b_source))
-                b_list.append(b)
+        for i, layer_struct_param in enumerate(self.struct_param_model):
+            num_neurons_prev = self.struct_param_model[i - 1][0] if i > 0 else self.input_channels
+            num_neurons = layer_struct_param[0]
+            layer_type = layer_struct_param[1]
+            layer_settings = layer_struct_param[2]
+            if layer_type in ["Conv2d", "ConvTranspose2d"]:
+                kernel_size = layer_settings["kernel_size"]
+                weight = getattr(self, "W_{0}".format(i)).view(num_neurons, num_neurons_prev, kernel_size, kernel_size)
+                bias = getattr(self, "b_{0}".format(i)).view(-1)
+            elif layer_type == "BatchNorm2d":
+                weight = getattr(self, "W_{0}".format(i)).view(-1)
+                bias = getattr(self, "b_{0}".format(i)).view(-1)
+            elif layer_type == "Simple_Layer":
+                weight = getattr(self, "W_{0}".format(i)).view(layer_settings["layer_input_size"], num_neurons)
+                bias = getattr(self, "b_{0}".format(i)).view(-1)
+            else:
+                weight = None
+                bias = None
+            W_list.append(to_np_array(weight))
+            b_list.append(to_np_array(bias))
         if isplot:
             if W_source is not None:
                 print("weight {0}:".format(W_source))
@@ -1113,33 +1119,46 @@ def sample_Gaussian(mu, logvar):
     return mu + std * eps
 
 
-def clone_net(generative_Net, layer_type = "Simple_Layer", clone_parameters = True):
+def clone_net(generative_Net, clone_parameters = True):
     W_init_list = []
     b_init_list = []
-    input_size = generative_Net.W_struct_param_list[0][-1][0][0]
+    if generative_Net.__class__.__name__ == "Generative_Net":
+        input_size = generative_Net.W_struct_param_list[0][-1][0][0]
+        net_type = "Net"
+    elif generative_Net.__class__.__name__ == "Generative_Net_Conv":
+        input_channels = generative_Net.input_channels
+        net_type = "ConvNet"
+    else:
+        raise
     struct_param = []
     statistics = generative_Net.latent_param
     if clone_parameters and generative_Net.num_context_neurons > 0:
         statistics = torch.cat([statistics, generative_Net.context], 1)
-    for i in range(len(generative_Net.W_struct_param_list)):
-        num_neurons = generative_Net.b_struct_param_list[i][-1][0]
-        layer_struct_param = [num_neurons, layer_type, {}]
-        struct_param.append(layer_struct_param)
-        if clone_parameters:
-            W_init = (getattr(generative_Net, "W_gen_{0}".format(i))(statistics)).squeeze(0)
-            b_init = getattr(generative_Net, "b_gen_{0}".format(i))(statistics)
-            if generative_Net.is_cuda:
-                W_init = W_init.cpu()
-                b_init = b_init.cpu()
-            W_init_list.append(W_init.data.numpy())
-            b_init_list.append(b_init.data.numpy()[0])
-        else:
-            W_init_list.append(None)
-            b_init_list.append(None)
-    if generative_Net.last_layer_linear is True:
-        struct_param[-1][2]["activation"] = "linear"
-    return Net(input_size = input_size, struct_param = struct_param, W_init_list = W_init_list, b_init_list = b_init_list, settings = generative_Net.settings_model, is_cuda = generative_Net.is_cuda)
-
+    if net_type == "Net":
+        for i in range(len(generative_Net.W_struct_param_list)):
+            num_neurons = generative_Net.b_struct_param_list[i][-1][0]
+            layer_struct_param = [num_neurons, "Simple_Layer", {}]
+            struct_param.append(layer_struct_param)
+            if clone_parameters:
+                W_init = (getattr(generative_Net, "W_gen_{0}".format(i))(statistics)).squeeze(0)
+                b_init = getattr(generative_Net, "b_gen_{0}".format(i))(statistics)
+                if generative_Net.is_cuda:
+                    W_init = W_init.cpu()
+                    b_init = b_init.cpu()
+                W_init_list.append(W_init.data.numpy())
+                b_init_list.append(b_init.data.numpy()[0])
+            else:
+                W_init_list.append(None)
+                b_init_list.append(None)
+        if generative_Net.last_layer_linear is True:
+            struct_param[-1][2]["activation"] = "linear"
+        net = Net(input_size = input_size, struct_param = struct_param, W_init_list = W_init_list, b_init_list = b_init_list, settings = generative_Net.settings_model, is_cuda = generative_Net.is_cuda)
+    elif net_type == "ConvNet":      
+        W_init_list, b_init_list = generative_Net.get_weights_bias(W_source = "core", b_source = "core")
+        net = ConvNet(input_channels = input_channels, struct_param = generative_Net.struct_param_model, W_init_list = W_init_list, b_init_list = b_init_list, settings = generative_Net.settings_model, is_cuda = generative_Net.is_cuda)
+    else:
+        raise
+    return net
 
 def get_nets(
     input_size,
