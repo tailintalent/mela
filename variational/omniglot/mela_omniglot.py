@@ -41,7 +41,7 @@ def get_metrics(master_model, X_test, y_test, loss_fn):
 
 # ## Prepare MeLA:
 
-# In[2]:
+# In[3]:
 
 
 pre_pooling_neurons = 200
@@ -53,9 +53,10 @@ activation_conv = "leakyReluFlat"
 
 struct_param_pre_conv = [
     [8, "Conv2d", {"kernel_size": 4, "stride": 2, "activation": activation_conv}],
-    [None, "MaxPool2d", {"kernel_size": 2, "return_indices": False}],
+#     [None, "MaxPool2d", {"kernel_size": 2, "return_indices": False}],
     [4, "Conv2d", {"kernel_size": 3, "stride": 1, "activation": activation_conv}],
     [4, "Conv2d", {"kernel_size": 3, "stride": 1, "activation": activation_conv}],
+    [40, "Simple_Layer", {"activation": "linear", "layer_input_size": 324}]
 ]
 struct_param_pre = [[60, "Simple_Layer", {"activation": activation_default}],
                     [pre_pooling_neurons, "Simple_Layer", {"activation": "linear"}],
