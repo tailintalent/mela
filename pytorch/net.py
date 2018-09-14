@@ -571,8 +571,8 @@ class ConvNet(nn.Module):
                 layer = get_Layer(layer_type = layer_type,
                               input_size = layer_settings["layer_input_size"],
                               output_size = num_channels,
-                              W_init = W_init_list[i],
-                              b_init = b_init_list[i],
+                              W_init = W_init_list[i] if self.W_init_list is not None and self.W_init_list[i] is not None else None,
+                              b_init = b_init_list[i] if self.b_init_list is not None and self.b_init_list[i] is not None else None,
                               settings = layer_settings,
                               is_cuda = self.is_cuda,
                              )
