@@ -19,4 +19,8 @@ This repository implements [Meta-Learning Autoencoders (MeLA)](https://arxiv.org
 After installing the above requirements, install the custom Gym environment by first going to the gym/ folder, then run:
 
 	$ pip3 install -e .
-The main experiment files can be found under the directory variational/Experiments/
+	
+# Running
+
+Use the variational/task_generation.py to generate the datasets. 
+Then can run the main experiments in variational/Experiments/.
